@@ -10,12 +10,9 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -23,15 +20,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 public class HybridVectorWriter {
 
-    private final TeiEmbeddingClient teiEmbeddingClient;
+    private final DashScopeEmbeddingClient dashScopeEmbeddingClient;
     private final MilvusWriteGateway milvusWriteGateway;
     private final TracingSupport tracingSupport;
     private final Gson gson = new Gson();
 
-    public HybridVectorWriter(TeiEmbeddingClient teiEmbeddingClient,
+    public HybridVectorWriter(DashScopeEmbeddingClient dashScopeEmbeddingClient,
             MilvusWriteGateway milvusWriteGateway,
             TracingSupport tracingSupport) {
-        this.teiEmbeddingClient = teiEmbeddingClient;
+        this.dashScopeEmbeddingClient = dashScopeEmbeddingClient;
         this.milvusWriteGateway = milvusWriteGateway;
         this.tracingSupport = tracingSupport;
     }
@@ -41,29 +38,19 @@ public class HybridVectorWriter {
             return Mono.empty();
         }
 
-        log.info("Writing {} documents with hybrid vectors via TEI", documents.size());
+        log.info("Writing {} documents with hybrid vectors via DashScope", documents.size());
         AtomicInteger skippedChunks = new AtomicInteger();
         Map<String, Object> traceTags = vectorTraceTags(documents);
 
         Mono<List<JsonObject>> embedRows = Flux.fromIterable(documents)
-                .flatMap(doc -> teiEmbeddingClient.embed(doc.getText())
-                        .map(response -> {
-                            List<Float> denseVector = Collections.emptyList();
-                            if (response.denseVecs() != null && !response.denseVecs().isEmpty()) {
-                                denseVector = response.denseVecs().get(0);
-                            }
-
-                            SortedMap<Long, Float> sparseVector = new TreeMap<>();
-                            if (response.sparseVecs() != null && !response.sparseVecs().isEmpty()) {
-                                sparseVector = teiEmbeddingClient.parseSparse(response.sparseVecs().get(0));
-                            }
-
+                .flatMap(doc -> dashScopeEmbeddingClient.embedDocument(doc.getText())
+                        .map(embedding -> {
                             JsonObject row = new JsonObject();
                             row.addProperty("doc_id", doc.getId() != null ? doc.getId() : UUID.randomUUID().toString());
                             row.addProperty("content", doc.getText());
                             row.add("metadata", gson.toJsonTree(doc.getMetadata()));
-                            row.add("embedding", gson.toJsonTree(denseVector));
-                            row.add("sparse_vector", gson.toJsonTree(sparseVector));
+                            row.add("embedding", gson.toJsonTree(embedding.denseVector()));
+                            row.add("sparse_vector", gson.toJsonTree(embedding.sparseVector()));
                             return row;
                         })
                         .onErrorResume(error -> {
@@ -75,7 +62,7 @@ public class HybridVectorWriter {
                                     TextSanitizer.preview(doc.getText()),
                                     error.getMessage());
                             return Mono.empty();
-                        }), 4)  // concurrency=4：限制并行 TEI 调用，避免同时发起过多请求压垮嵌入服务
+                }), 4)  // concurrency=4：限制并行 DashScope 调用，避免同时发起过多请求
                 .collectList();
 
         return tracingSupport.traceMono("etl.embed", traceTags, embedRows)

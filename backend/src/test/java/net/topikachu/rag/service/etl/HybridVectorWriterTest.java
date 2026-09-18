@@ -32,7 +32,7 @@ import static org.mockito.Mockito.when;
 class HybridVectorWriterTest {
 
     @Mock
-    private TeiEmbeddingClient teiEmbeddingClient;
+    private DashScopeEmbeddingClient dashScopeEmbeddingClient;
 
     @Mock
     private MilvusWriteGateway milvusWriteGateway;
@@ -47,7 +47,7 @@ class HybridVectorWriterTest {
         when(tracingSupport.traceMono(anyString(), anyMap(), org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(invocation -> invocation.getArgument(2));
 
-        hybridVectorWriter = new HybridVectorWriter(teiEmbeddingClient, milvusWriteGateway, tracingSupport);
+        hybridVectorWriter = new HybridVectorWriter(dashScopeEmbeddingClient, milvusWriteGateway, tracingSupport);
     }
 
     @Test
@@ -55,11 +55,11 @@ class HybridVectorWriterTest {
         Document good = new Document("正常内容", Map.of("doc_uuid", "doc-1", "page_number", 1));
         Document bad = new Document("坏内容", Map.of("doc_uuid", "doc-1", "page_number", 2));
 
-        when(teiEmbeddingClient.embed("正常内容"))
-                .thenReturn(Mono.just(new TeiEmbeddingClient.BgeM3Response(
-                        List.of(List.of(1.0f, 2.0f)),
-                        List.of(Map.of("1", 0.8f)))));
-        when(teiEmbeddingClient.embed("坏内容"))
+        when(dashScopeEmbeddingClient.embedDocument("正常内容"))
+                .thenReturn(Mono.just(new DashScopeEmbeddingClient.HybridEmbedding(
+                        List.of(1.0f, 2.0f),
+                        new java.util.TreeMap<>(Map.of(1L, 0.8f)))));
+        when(dashScopeEmbeddingClient.embedDocument("坏内容"))
                 .thenReturn(Mono.error(new IllegalArgumentException("invalid chunk")));
 
         InsertResp insertResp = mock(InsertResp.class);
@@ -73,13 +73,15 @@ class HybridVectorWriterTest {
         List<JsonObject> rows = rowsCaptor.getValue();
         assertEquals(1, rows.size());
         assertEquals("正常内容", rows.get(0).get("content").getAsString());
+        assertEquals(2, rows.get(0).getAsJsonArray("embedding").size());
+        assertEquals(0.8f, rows.get(0).getAsJsonObject("sparse_vector").get("1").getAsFloat());
     }
 
     @Test
     void failsWhenAllChunksFailEmbedding() {
         Document bad = new Document("坏内容", Map.of("doc_uuid", "doc-2", "page_number", 9));
 
-        when(teiEmbeddingClient.embed("坏内容"))
+        when(dashScopeEmbeddingClient.embedDocument("坏内容"))
                 .thenReturn(Mono.error(new IllegalArgumentException("invalid chunk")));
 
         IllegalStateException error = assertThrows(IllegalStateException.class,

@@ -12,7 +12,7 @@ import net.topikachu.rag.auth.CurrentUserContext;
 import net.topikachu.rag.auth.SearchScope;
 import net.topikachu.rag.business.document.access.KnowledgeAccessPolicy;
 import net.topikachu.rag.service.etl.KnowledgeParentBlockService;
-import net.topikachu.rag.service.etl.TeiEmbeddingClient;
+import net.topikachu.rag.service.etl.DashScopeEmbeddingClient;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,8 +21,6 @@ import reactor.core.publisher.Mono;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.SortedMap;
-import java.util.TreeMap;
 
 @Service
 @Slf4j
@@ -44,13 +42,13 @@ public class HybridSearchService {
     @Value("${rag.retrieval.rrf-k:60}")
     private int rrfK;
 
-    private final TeiEmbeddingClient teiEmbeddingClient;
+    private final DashScopeEmbeddingClient dashScopeEmbeddingClient;
     private final MilvusSearchGateway milvusSearchGateway;
     private final KnowledgeAccessPolicy accessPolicy;
 
-    public HybridSearchService(TeiEmbeddingClient teiEmbeddingClient, MilvusSearchGateway milvusSearchGateway,
+    public HybridSearchService(DashScopeEmbeddingClient dashScopeEmbeddingClient, MilvusSearchGateway milvusSearchGateway,
                                KnowledgeAccessPolicy accessPolicy) {
-        this.teiEmbeddingClient = teiEmbeddingClient;
+        this.dashScopeEmbeddingClient = dashScopeEmbeddingClient;
         this.milvusSearchGateway = milvusSearchGateway;
         this.accessPolicy = accessPolicy;
     }
@@ -69,7 +67,7 @@ public class HybridSearchService {
                 KnowledgeParentBlockService.CHUNK_SCHEMA_VERSION);
         // 纯 Dense 模式（useSparse=false）：仅用语义向量检索
         if (!useSparse) {
-            return teiEmbeddingClient.embedDense(query)
+            return dashScopeEmbeddingClient.embedDenseQuery(query)
                     .flatMap(denseVector -> {
                         SearchReq.SearchReqBuilder<?, ?> builder = SearchReq.builder()
                                 .collectionName(collectionName)
@@ -87,19 +85,10 @@ public class HybridSearchService {
         }
 
         // 混合检索：Dense + Sparse，RRF 融合排序
-        return teiEmbeddingClient.embed(query)
-                .map(response -> {
-                    // 从 TEI 服务获取 Dense 向量（1024 维浮点数数组）
-                    List<Float> denseVector = Collections.emptyList();
-                    if (response.denseVecs() != null && !response.denseVecs().isEmpty()) {
-                        denseVector = response.denseVecs().get(0);
-                    }
-
-                    // 从 TEI 服务获取 Sparse 向量（BM25 风格的词项→权重映射）
-                    SortedMap<Long, Float> sparseMap = new TreeMap<>();
-                    if (response.sparseVecs() != null && !response.sparseVecs().isEmpty()) {
-                        sparseMap = teiEmbeddingClient.parseSparse(response.sparseVecs().get(0));
-                    }
+        return dashScopeEmbeddingClient.embedQuery(query)
+                .map(embedding -> {
+                    List<Float> denseVector = embedding.denseVector();
+                    var sparseMap = embedding.sparseVector();
 
                     // 构造 Dense 子查询：语义相似度 ANNS
                     AnnSearchReq.AnnSearchReqBuilder<?, ?> denseReqBuilder = AnnSearchReq.builder()
@@ -107,7 +96,7 @@ public class HybridSearchService {
                             .vectors(Collections.singletonList(new FloatVec(denseVector)))
                             .topK(this.topK);                                       // denseTopK=50
 
-                    // 构造 Sparse 子查询：词频相似度 ANNS
+                    // 构造 Sparse 子查询：模型生成的稀疏词项权重 ANNS
                     AnnSearchReq.AnnSearchReqBuilder<?, ?> sparseReqBuilder = AnnSearchReq.builder()
                             .vectorFieldName(sparseVectorField)                     // Sparse 向量字段："sparse_vector"
                             .vectors(Collections.singletonList(new SparseFloatVec(sparseMap)))
@@ -145,7 +134,7 @@ public class HybridSearchService {
                 });
     }
 
-    // 预热 TEI embedding 模型和 Milvus 连接池，避免首次真实请求的冷启动延迟
+    // 预热 DashScope embedding API 和 Milvus 连接池，避免首次真实请求的冷启动延迟
     public Mono<Void> warmup() {
         return hybridSearch("warmup query", null, SearchScope.empty(), 1).then();
     }
