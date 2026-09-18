@@ -62,12 +62,9 @@ rerank-service/
 diff.txt
 .claude/
 CLAUDE.md
-backend/sql/20260429_acl_metadata_refresh.sql
-backend/sql/20260507_object_storage.sql
 .codex/
 .codex-tmp/
 .playwright-mcp/
-backend/sql/
 docs/
 CONTEXT.md
 start-all.bat
