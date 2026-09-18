@@ -2,8 +2,6 @@ package net.topikachu.rag.service.chat;
 
 import lombok.extern.slf4j.Slf4j;
 import net.topikachu.rag.chat.history.ChatHistoryService;
-import net.topikachu.rag.evaluation.ContextNode;
-import net.topikachu.rag.evaluation.service.EvaluationPersistenceService;
 import net.topikachu.rag.service.chat.strategy.ChatModelStrategy;
 import net.topikachu.rag.service.chat.strategy.ChatModelStrategyFactory;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -15,7 +13,6 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -29,22 +26,19 @@ public final class GroundedTurnModule {
     private final UsedSourceValidator usedSourceValidator;
     private final ChatMemory chatMemory;
     private final ChatHistoryService chatHistoryService;
-    private final EvaluationPersistenceService persistenceService;
 
     public GroundedTurnModule(ContextFormatter contextFormatter,
                               ChatModelStrategyFactory strategyFactory,
                               ReactiveChatGateway reactiveChatGateway,
                               UsedSourceValidator usedSourceValidator,
                               ChatMemory chatMemory,
-                              ChatHistoryService chatHistoryService,
-                              EvaluationPersistenceService persistenceService) {
+                              ChatHistoryService chatHistoryService) {
         this.contextFormatter = contextFormatter;
         this.strategyFactory = strategyFactory;
         this.reactiveChatGateway = reactiveChatGateway;
         this.usedSourceValidator = usedSourceValidator;
         this.chatMemory = chatMemory;
         this.chatHistoryService = chatHistoryService;
-        this.persistenceService = persistenceService;
     }
 
     public Mono<Result> execute(Command command) {
@@ -98,19 +92,8 @@ public final class GroundedTurnModule {
                 command.modelId(),
                 command.mode(),
                 command.msgId());
-        Mono<Void> evaluationCommit = persistenceService.saveConversation(
-                command.msgId(),
-                command.conversationId(),
-                command.userId(),
-                command.userInput(),
-                result.answer(),
-                command.modelId(),
-                command.mode(),
-                toContextNodes(command.candidateEvidence()),
-                result.usedSources(),
-                command.traceId());
         // ponytail: completion barrier only; add compensation if partial cross-store writes become an observed problem.
-        return Mono.when(memoryCommit, historyCommit, evaluationCommit);
+        return Mono.when(memoryCommit, historyCommit);
     }
 
     private Throwable toSourceValidationError(Throwable error) {
@@ -128,17 +111,6 @@ public final class GroundedTurnModule {
                     "json_parse_failed");
         }
         return error;
-    }
-
-    private List<ContextNode> toContextNodes(List<Document> documents) {
-        List<ContextNode> nodes = new ArrayList<>();
-        for (Document document : documents) {
-            String fileName = String.valueOf(document.getMetadata().getOrDefault("file_name", "Unknown File"));
-            Object scoreValue = document.getMetadata().get("score");
-            double score = scoreValue instanceof Number number ? number.doubleValue() : 0.0;
-            nodes.add(new ContextNode(document.getText(), fileName, score));
-        }
-        return nodes;
     }
 
     public record Command(

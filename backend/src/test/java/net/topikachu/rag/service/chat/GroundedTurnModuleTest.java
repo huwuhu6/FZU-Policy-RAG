@@ -1,7 +1,6 @@
 package net.topikachu.rag.service.chat;
 
 import net.topikachu.rag.chat.history.ChatHistoryService;
-import net.topikachu.rag.evaluation.service.EvaluationPersistenceService;
 import net.topikachu.rag.service.chat.strategy.ChatModelStrategy;
 import net.topikachu.rag.service.chat.strategy.ChatModelStrategyFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +28,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,9 +53,6 @@ class GroundedTurnModuleTest {
     @Mock
     private ChatHistoryService chatHistoryService;
 
-    @Mock
-    private EvaluationPersistenceService persistenceService;
-
     private GroundedTurnModule module;
 
     @BeforeEach
@@ -66,12 +63,11 @@ class GroundedTurnModuleTest {
                 reactiveChatGateway,
                 new UsedSourceValidator(),
                 chatMemory,
-                chatHistoryService,
-                persistenceService);
+                chatHistoryService);
     }
 
     @Test
-    void publishesAndPersistsOnlyEvidenceActuallyUsedByTheAnswer() {
+    void publishesOnlyEvidenceActuallyUsedByTheAnswer() {
         Document first = candidate("ev-1", "doc-1", "first.pdf");
         Document second = candidate("ev-2", "doc-2", "second.pdf");
         GroundedTurnModule.Command command = command(List.of(first, second));
@@ -91,13 +87,6 @@ class GroundedTurnModuleTest {
         when(chatHistoryService.saveTurn(
                 "conversation-1", "user-1", "question", "answer", "model-1", "agent", "msg-1"))
                 .thenReturn(Mono.empty());
-        when(persistenceService.saveConversation(
-                eq("msg-1"), eq("conversation-1"), eq("user-1"), eq("question"), eq("answer"),
-                eq("model-1"), eq("agent"), argThat(nodes -> nodes.size() == 2),
-                argThat(sources -> sources.size() == 1 && "ev-2".equals(sources.get(0).evidenceId())),
-                eq("trace-1")))
-                .thenReturn(Mono.empty());
-
         GroundedTurnModule.Result result = module.execute(command).block();
 
         assertEquals("answer", result.answer());
@@ -134,17 +123,19 @@ class GroundedTurnModuleTest {
         verify(chatHistoryService, never()).saveTurn(
                 eq("conversation-1"), eq("user-1"), eq("question"), eq("answer"),
                 eq("model-1"), eq("agent"), eq("msg-1"));
-        verify(persistenceService, never()).saveConversation(
-                eq("msg-1"), eq("conversation-1"), eq("user-1"), eq("question"), eq("answer"),
-                eq("model-1"), eq("agent"), anyList(), anyList(), eq("trace-1"));
     }
 
     @Test
     void doesNotReturnBeforeEveryCommitCompletes() {
         GroundedTurnModule.Command command = command(List.of(candidate("ev-1", "doc-1", "first.pdf")));
+        Sinks.Empty<Void> memoryBarrier = Sinks.empty();
         Sinks.Empty<Void> historyBarrier = Sinks.empty();
 
         when(chatMemory.get("conversation-1")).thenReturn(List.of());
+        doAnswer(invocation -> {
+            memoryBarrier.asMono().block();
+            return null;
+        }).when(chatMemory).add(eq("conversation-1"), anyList());
         when(contextFormatter.formatParentContexts(anyList())).thenReturn("parent context");
         when(strategyFactory.getStrategy("model-1")).thenReturn(strategy);
         when(strategy.callSourcedAnswer(
@@ -153,15 +144,12 @@ class GroundedTurnModuleTest {
         when(chatHistoryService.saveTurn(
                 "conversation-1", "user-1", "question", "answer", "model-1", "agent", "msg-1"))
                 .thenReturn(historyBarrier.asMono());
-        when(persistenceService.saveConversation(
-                eq("msg-1"), eq("conversation-1"), eq("user-1"), eq("question"), eq("answer"),
-                eq("model-1"), eq("agent"), anyList(), anyList(), eq("trace-1")))
-                .thenReturn(Mono.empty());
-
         StepVerifier.create(module.execute(command))
                 .expectSubscription()
                 .expectNoEvent(Duration.ofMillis(100))
                 .then(() -> historyBarrier.tryEmitEmpty())
+                .expectNoEvent(Duration.ofMillis(100))
+                .then(() -> memoryBarrier.tryEmitEmpty())
                 .assertNext(result -> assertEquals("answer", result.answer()))
                 .verifyComplete();
     }
