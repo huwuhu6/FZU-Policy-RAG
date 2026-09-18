@@ -1,0 +1,77 @@
+# Compiled class file
+*.class
+__pycache__/
+*.pyc*
+.pytest_cache/
+.venv/
+venv/
+
+# Log file
+*.log
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+replay_pid*
+
+# ===== frontend =====
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# ===== backend =====
+backend/target/
+backend/data/
+backend/src/main/resources/application-ollama-openai.properties
+backend/src/main/resources/application.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local env files
+.env
+.env.*
+!.env.langfuse.example
+!frontend/.env.example
+
+# Generated outputs
+output/
+load-tests/results/
+evaluation/
+rerank/
+rerank-service/
+diff.txt
+.claude/
+AGENTS.md
+CLAUDE.md
+backend/sql/20260429_acl_metadata_refresh.sql
+backend/sql/20260507_object_storage.sql
+.codex/
+.codex-tmp/
+.playwright-mcp/
+backend/sql/
+docs/
+CONTEXT.md
+start-all.bat
+replace_grid.js
+replace.js
+/面试问答手册.md
