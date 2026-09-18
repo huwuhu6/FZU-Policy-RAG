@@ -182,20 +182,13 @@ public class ChatService {
                                 modelId, retrySignal.failure().getMessage(), retrySignal.totalRetriesInARow() + 1, 3)))
                 .onErrorResume(e -> {
                     log.error("[{}] API definitively failed after retries: {}", modelId, e.getMessage());
-                    if (allowModelFallback && !"ollama".equals(modelId)) {
-                        log.warn("=== 触发降级机制 === 切换至本地大模型 (ollama) 作兜底回复");
-                        // Recursively call evaluateQuery but force the modelId to be 'ollama'
-                        return evaluateQuery(question, groundTruth, config, baselinePromptResource,
-                                optimizedPromptResource, topK, "ollama", true);
-                    }
                     if (!allowModelFallback) {
                         return Mono.error(e);
                     }
-                    // Ultimate fallback if even Ollama fails or if the original request was already for Ollama
                     return Mono.just(new EvaluationResultItem(
                             question,
                             groundTruth,
-                            "【系统提示】所有模型调用均失败，请稍后再试或联系管理员。错误详情: " + e.getMessage(),
+                            "【系统提示】DashScope 模型调用失败，请稍后再试或联系管理员。错误详情: " + e.getMessage(),
                             new ArrayList<>()));
                 }));
     }

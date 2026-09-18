@@ -3,9 +3,11 @@ package net.topikachu.rag.service.chat.strategy;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnBean(name = "googleGenAiChatModel")
 public class GeminiChatModelStrategy implements ChatModelStrategy {
 
     private final ChatClient chatClient;

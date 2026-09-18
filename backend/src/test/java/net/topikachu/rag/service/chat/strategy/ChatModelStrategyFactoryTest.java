@@ -16,9 +16,8 @@ class ChatModelStrategyFactoryTest {
         ChatModel mockModel = mock(ChatModel.class);
 
         ChatModelStrategy gemini = new GeminiChatModelStrategy(mockModel);
-        ChatModelStrategy ollama = new OllamaChatModelStrategy(mockModel);
 
-        ChatModelStrategyFactory factory = new ChatModelStrategyFactory(List.of(ollama, gemini));
+        ChatModelStrategyFactory factory = new ChatModelStrategyFactory(List.of(gemini));
 
         ChatModelStrategy resolved = factory.getStrategy("gemini");
         assertNotNull(resolved);
@@ -31,9 +30,8 @@ class ChatModelStrategyFactoryTest {
 
         ChatModelStrategy dashScope = new DashScopeChatModelStrategy(mockModel);
         ChatModelStrategy qwen = new QwenChatModelStrategy(mockModel);
-        ChatModelStrategy ollama = new OllamaChatModelStrategy(mockModel);
 
-        ChatModelStrategyFactory factory = new ChatModelStrategyFactory(List.of(ollama, dashScope, qwen));
+        ChatModelStrategyFactory factory = new ChatModelStrategyFactory(List.of(dashScope, qwen));
 
         assertEquals("dashscope", factory.getStrategy("dashscope").getModelId());
         assertEquals("qwen", factory.getStrategy("qwen").getModelId());

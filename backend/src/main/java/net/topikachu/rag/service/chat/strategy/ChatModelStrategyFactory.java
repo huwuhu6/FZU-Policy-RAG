@@ -28,19 +28,24 @@ public class ChatModelStrategyFactory {
 
     public ChatModelStrategy getStrategy(String modelId) {
         if (modelId == null || modelId.isBlank()) {
-            log.warn("modelId is null or blank, using default 'ollama' " +
+            log.warn("modelId is null or blank, using default 'qwen' " +
                     "strategy");
-            return strategyMap.get("ollama");
+            return requireStrategy("qwen");
         }
 
         ChatModelStrategy strategy = strategyMap.get(modelId.toLowerCase());
         if (strategy == null) {
-            log.warn("Unknown modelId '{}', falling back to 'ollama' strategy"
-                    , modelId);
-            // 未知 modelId 也回退到 ollama：同上，本地模型是唯一无需外部 API key 的兜底方案
-            return strategyMap.get("ollama");
+            throw new IllegalArgumentException("Unknown chat modelId: " + modelId);
         }
 
+        return strategy;
+    }
+
+    private ChatModelStrategy requireStrategy(String modelId) {
+        ChatModelStrategy strategy = strategyMap.get(modelId);
+        if (strategy == null) {
+            throw new IllegalStateException("Chat strategy is not configured: " + modelId);
+        }
         return strategy;
     }
 }
