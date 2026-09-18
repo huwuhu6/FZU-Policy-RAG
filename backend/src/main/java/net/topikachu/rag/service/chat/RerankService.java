@@ -1,6 +1,6 @@
 package net.topikachu.rag.service.chat;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,22 +10,29 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
- * Rerank service using local BGE Reranker (BAAI/bge-reranker-base) via TEI.
+ * Rerank service using the DashScope Native Rerank API.
  * Includes circuit breaker for resilience.
  */
 @Service
 @Slf4j
 public class RerankService {
 
-    @Value("${rag.rerank.url:http://localhost:8099/rerank}")
+    @Value("${rag.rerank.url:https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank}")
     private String rerankUrl;
 
-    @Value("${rag.rerank.timeout-ms:1500}")
+    @Value("${rag.rerank.api-key:}")
+    private String apiKey;
+
+    @Value("${rag.rerank.model:qwen3.7-text-rerank}")
+    private String model;
+
+    @Value("${rag.rerank.timeout-ms:10000}")
     private int timeoutMs;
 
     private final WebClient webClient;
@@ -49,43 +56,25 @@ public class RerankService {
                 .map(Document::getText)
                 .collect(Collectors.toList());
 
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("query", query);
-        requestBody.put("texts", texts); // TEI uses "texts" not "documents"
-        // truncate=false：长文本不截断，保证 Cross-Encoder 看到完整上下文，截断会丢失关键信息
-        requestBody.put("truncate", false);
+        if (apiKey == null || apiKey.isBlank()) {
+            return Mono.error(new IllegalStateException("DashScope rerank API key is not configured"));
+        }
+
+        int requestedTopN = Math.min(topN, docs.size());
+        RerankRequest requestBody = new RerankRequest(
+                model,
+                new RerankInput(query, texts),
+                new RerankParameters(requestedTopN));
 
         return webClient.post()
                 .uri(rerankUrl)
                 .contentType(MediaType.APPLICATION_JSON)
+                .headers(headers -> headers.setBearerAuth(apiKey))
                 .bodyValue(requestBody)
                 .retrieve()
-                .bodyToMono(JsonNode.class)
+                .bodyToMono(RerankResponse.class)
                 .timeout(Duration.ofMillis(timeoutMs))
-                .map(results -> {
-                    List<Document> rerankedDocs = new ArrayList<>();
-                    if (results != null && results.isArray()) {
-                        List<Map.Entry<Integer, Double>> scored = new ArrayList<>();
-                        for (JsonNode result : results) {
-                            int index = result.get("index").asInt();
-                            double score = result.get("score").asDouble();
-                            scored.add(Map.entry(index, score));
-                        }
-                        scored.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-
-                        for (int i = 0; i < Math.min(scored.size(), topN); i++) {
-                            int index = scored.get(i).getKey();
-                            if (index < 0 || index >= docs.size()) {
-                                continue;
-                            }
-                            double score = scored.get(i).getValue();
-                            Document originalDoc = docs.get(index);
-                            originalDoc.getMetadata().put("rerank_score", score);
-                            rerankedDocs.add(originalDoc);
-                        }
-                    }
-                    return rerankedDocs;
-                })
+                .map(response -> mapResponse(response, docs, topN))
                 .doOnNext(rerankedDocs -> {
                     long elapsed = System.currentTimeMillis() - startTime;
                     log.info("Rerank completed in {}ms, returned {} docs", elapsed, rerankedDocs.size());
@@ -102,11 +91,60 @@ public class RerankService {
                 });
     }
 
+    private List<Document> mapResponse(RerankResponse response, List<Document> docs, int topN) {
+        if (response == null || response.output() == null || response.output().results() == null) {
+            throw new IllegalStateException("DashScope rerank response missing results");
+        }
+
+        List<RerankResult> scored = new ArrayList<>(response.output().results());
+        for (RerankResult result : scored) {
+            if (result == null || result.index() == null || result.relevanceScore() == null) {
+                throw new IllegalStateException("DashScope rerank response contains invalid result");
+            }
+            if (result.index() < 0 || result.index() >= docs.size()) {
+                throw new IllegalStateException("DashScope rerank result index out of bounds: " + result.index());
+            }
+        }
+        scored.sort((left, right) -> Double.compare(right.relevanceScore(), left.relevanceScore()));
+
+        List<Document> rerankedDocs = new ArrayList<>();
+        for (int i = 0; i < Math.min(scored.size(), topN); i++) {
+            RerankResult result = scored.get(i);
+            Document originalDoc = docs.get(result.index());
+            originalDoc.getMetadata().put("rerank_score", result.relevanceScore());
+            rerankedDocs.add(originalDoc);
+        }
+        return rerankedDocs;
+    }
+
+    private record RerankRequest(
+            String model,
+            RerankInput input,
+            RerankParameters parameters) {
+    }
+
+    private record RerankInput(String query, List<String> documents) {
+    }
+
+    private record RerankParameters(@JsonProperty("top_n") int topN) {
+    }
+
+    private record RerankResponse(RerankOutput output) {
+    }
+
+    private record RerankOutput(List<RerankResult> results) {
+    }
+
+    private record RerankResult(
+            Integer index,
+            @JsonProperty("relevance_score") Double relevanceScore) {
+    }
+
     public Mono<List<Document>> rerankFallback(String query, List<Document> docs, int topN, Throwable t) {
         log.warn("▇▇ Rerank 降级触发 ▇▇ 原因: {} - 仅返回 Top{} 原始检索结果", t.getMessage(), topN);
 
         if (docs == null || docs.isEmpty()) {
-            return Mono.just(Collections.emptyList());
+            return Mono.just(List.of());
         }
         return Mono.just(docs.subList(0, Math.min(docs.size(), topN)));
     }

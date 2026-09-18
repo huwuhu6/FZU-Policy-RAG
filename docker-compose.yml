@@ -100,19 +100,3 @@ services:
     depends_on:
       - jaeger
     restart: always
-
- # 9. 本地重排序服务 (TEI)
-  reranker:
-    image: ghcr.m.daocloud.io/huggingface/text-embeddings-inference:cpu-latest
-    container_name: rerank-service
-    ports:
-      - "8099:80"  # 将宿主机的 8099 映射到容器内部的 80 端口
-    volumes:
-      - ./models/bge-reranker-base:/data
-    command: 
-      - "--model-id"
-      - "/data"
-      - "--auto-truncate"
-    environment:
-      - HF_ENDPOINT=https://hf-mirror.com
-    restart: always
