@@ -941,6 +941,9 @@ const logout = () => {
 /* Sidebar Animation */
 .chat-shell {
   display: flex !important;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 .chat-sidebar {
   width: 280px;
@@ -954,6 +957,9 @@ const logout = () => {
 .chat-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   position: relative;
 }
 .chat-sidebar-header {
@@ -1114,7 +1120,9 @@ const logout = () => {
 /* --- Active State --- */
 .chat-thread {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 40px 0 100px 0; /* Box bottom padding for input space */
   display: flex;
   flex-direction: column;
