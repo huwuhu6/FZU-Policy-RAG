@@ -1,7 +1,10 @@
 package net.topikachu.rag.business.document.service.impl;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import net.topikachu.rag.business.document.entity.AclRefreshStatus;
 import net.topikachu.rag.business.document.entity.Document;
+import net.topikachu.rag.business.document.entity.DocumentStatus;
 import net.topikachu.rag.business.document.entity.KnowledgeAclRefreshTask;
 import net.topikachu.rag.business.document.mapper.DocumentMapper;
 import net.topikachu.rag.business.document.mapper.KnowledgeAclRefreshTaskMapper;
@@ -10,20 +13,35 @@ import net.topikachu.rag.service.etl.KnowledgeParentBlockService;
 import net.topikachu.rag.service.etl.MilvusChunkRow;
 import net.topikachu.rag.service.etl.MilvusWriteGateway;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.springframework.test.util.ReflectionTestUtils;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Map;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import org.mockito.ArgumentCaptor;
+
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AclRefreshManagerTest {
+
+    @BeforeAll
+    static void initMybatisPlusCache() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), Document.class);
+    }
 
     private DocumentMapper documentMapper;
     private KnowledgeAclRefreshTaskMapper aclRefreshTaskMapper;
@@ -117,6 +135,36 @@ class AclRefreshManagerTest {
 
         assert !refreshed;
         verify(milvusWriteGateway, never()).queryChunksByDocUuid(any());
+    }
+
+    @Test
+    void backfillSelectsCompletedDocumentsOnly() {
+        when(documentMapper.selectList(any())).thenReturn(List.of());
+
+        manager.backfillAclMetadata();
+
+        ArgumentCaptor<LambdaQueryWrapper<Document>> wrapperCaptor =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(documentMapper).selectList(wrapperCaptor.capture());
+        assertTrue(wrapperCaptor.getValue().getSqlSegment().toUpperCase().contains("STATUS"));
+    }
+
+    @Test
+    void backfillSkipsFailedAndSplittingDocuments() {
+        Document completed = doc("id1", "completed", 1);
+        completed.setStatus(DocumentStatus.COMPLETED.name());
+        Document failed = doc("id2", "failed", 1);
+        failed.setStatus(DocumentStatus.FAILED.name());
+        Document splitting = doc("id3", "splitting", 1);
+        splitting.setStatus(DocumentStatus.SPLITTING.name());
+        when(documentMapper.selectList(any())).thenReturn(List.of(completed, failed, splitting));
+        when(aclRefreshTaskMapper.selectOne(any())).thenReturn(null);
+
+        manager.backfillAclMetadata();
+
+        verify(documentMapper, times(1)).update(isNull(), any(UpdateWrapper.class));
+        verify(documentMapper, never()).updateById(any(Document.class));
+        verify(aclRefreshTaskMapper).insert(any(KnowledgeAclRefreshTask.class));
     }
 
     private KnowledgeAclRefreshTask task(String id, String docUuid, int aclVersion) {

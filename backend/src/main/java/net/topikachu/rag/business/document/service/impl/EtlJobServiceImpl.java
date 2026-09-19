@@ -156,6 +156,10 @@ public class EtlJobServiceImpl implements EtlJobService {
                                     .set(EtlJob::getLockedBy, workerId)
                                     .set(EtlJob::getLockedUntil, lockedUntil)
                                     .set(EtlJob::getStartedAt, LocalDateTime.now())
+                                    .set(EtlJob::getFinishedAt, null)
+                                    .set(EtlJob::getNextRetryTime, null)
+                                    .set(EtlJob::getLastError, null)
+                                    .set(EtlJob::getErrorStack, null)
                                     .set(EtlJob::getUpdateDate, LocalDateTime.now())
                                     .eq(EtlJob::getId, jobId)
                                     .and(w -> w

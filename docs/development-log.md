@@ -119,3 +119,30 @@ V1 仅覆盖福州大学教务处三个确定栏目和有限通知页数；不�
 ### 最终取舍与限制
 
 本轮只做福州大学 CMS 当前真实 DOM 的最小兼容，没有引入通用 CMS 适配层、复杂 Content-Type 识别、WebMagic 或新的下载库，也没有调整 Embedding、Rerank、RRF、Chunk、Milvus schema 或检索算法。当前仍不支持 XLS/XLSX、ZIP/RAR、PPT/PPTX、图片和 OCR；扫描型 PDF 在 OCR 关闭时仍可能失败。相同二进制附件被多个来源页引用时，现有内容 hash 去重的 provenance 限制仍未处理。
+
+## 2026-09-19｜修复 ETL 元数据与任务状态并完成存量 ACL 回填
+
+### 目标与根因
+
+本轮只处理存量 baseline 的状态可靠性和元数据一致性，不改变 Embedding、Rerank、Hybrid/RRF、Chunk、Milvus schema 或 RAG 主链。真实数据检查发现：ETL 父块文件名曾使用临时 ETL 文件名而不是业务文件名；`markRunning` 未清理旧的终态字段；成功任务可能残留 `next_retry_time`；ACL backfill 查询范围没有明确限制为 `COMPLETED` 文档。
+
+运行时验证还暴露出两个 upstream 旁路问题：当前 MyBatis-Plus 只配置了分页拦截器，带 `@Version` 的 `updateById` 会生成但无法绑定 `MP_OPTLOCK_VERSION_ORIGINAL`；父块 JSON `tags` 在 UpdateWrapper 中直接绑定 `List<String>` 会被 MySQL 识别为 binary。两者都会阻断 ACL 回填的状态或父块元数据写回。
+
+### 方案
+
+- ETL 元数据统一优先使用 `knowledge_document.file_name`，只有业务文件名为空时才回退到临时路径文件名；父块和 child metadata 使用同一确定性文件名。
+- `markRunning` 清理 `finished_at`、`next_retry_time`、`last_error`、`error_stack`，保留 retry history 和 active key；`markSuccess` 清理 retry schedule。
+- ACL backfill 只选择 `COMPLETED` 且有 `doc_uuid/file_name` 的文档；ACL 管理器的文档和任务状态写回改为显式字段更新，避开未配置的乐观锁拦截器，不修改文档业务版本号。
+- 父块 ACL 元数据同步时将 tags 序列化为 JSON 文本再写入 MySQL JSON 字段，保留现有父块查询、Parent-Child expansion 和检索流程。
+
+### 数据清理与真实验证
+
+在本地开发数据库 `campus_knowledge` 中，仅按已授权范围清理成功任务的旧 retry schedule：清理前 `SUCCESS AND next_retry_time IS NOT NULL` 为 170；执行 `UPDATE etl_job SET next_retry_time = NULL WHERE status='SUCCESS' AND next_retry_time IS NOT NULL`，更新 170 行；清理后为 0。
+
+停止旧进程后执行 `mvn clean`、定向测试和重新编译，再用新编译产物启动应用。ACL backfill API 真实执行返回 `data=170`。执行后 MySQL 检查结果为：`knowledge_document` 为 `COMPLETED=170`、`FAILED=2`；`etl_job` 为 `SUCCESS=170`、`FAILED=2`；成功任务残留 retry schedule 为 0；完成文档与父块的 file_name mismatch 为 0；父块总数为 237；ACL refresh task 为 `SUCCESS=170`。
+
+同时直接查询 Milvus collection `fzu_policy_rag_baseline_v1` 的 10 条 child 数据，确认返回 `doc_id/content/metadata`，metadata 含 `doc_uuid`、业务 `file_name`、`acl_version=1`、`parent_block_id`、`evidence_id` 和 `chunk_schema_version=2`。ACL 回填成功计数来自完整的 Milvus query → metadata rebuild → upsert → MySQL parent refresh 链路，不是只更新 MySQL。
+
+### 测试与限制
+
+新增/更新的定向测试共 19 项，全部通过；`mvn clean` 和 `mvn -DskipTests compile` 均通过。两个 FAILED 文档分别对应既有 OCR disabled 和 ETL timeout 数据，不在本轮 backfill 的 `COMPLETED` 选择范围内。全量测试中的外部 Milvus 连接问题和既有 architecture guard 仍按 upstream/环境问题处理，没有为此修改无关业务代码。

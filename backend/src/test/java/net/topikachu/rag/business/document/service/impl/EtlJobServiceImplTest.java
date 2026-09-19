@@ -97,6 +97,31 @@ class EtlJobServiceImplTest {
     }
 
     @Test
+    void markRunningClearsPreviousTerminalFieldsButKeepsRetryHistory() {
+        EtlJobMapper mapper = mock(EtlJobMapper.class);
+        EtlJobServiceImpl service = new EtlJobServiceImpl(mapper);
+
+        when(mapper.update(ArgumentMatchers.isNull(), any())).thenReturn(1);
+
+        Boolean claimed = service.markRunning(
+                "job-1", "worker-1", LocalDateTime.now().plusMinutes(10)).block();
+
+        Assertions.assertTrue(claimed);
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<EtlJob>> wrapperCaptor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper.class);
+        verify(mapper).update(ArgumentMatchers.isNull(), wrapperCaptor.capture());
+
+        String sqlSet = wrapperCaptor.getValue().getSqlSet().toUpperCase();
+        Assertions.assertTrue(sqlSet.contains("FINISHED_AT"));
+        Assertions.assertTrue(sqlSet.contains("NEXT_RETRY_TIME"));
+        Assertions.assertTrue(sqlSet.contains("LAST_ERROR"));
+        Assertions.assertTrue(sqlSet.contains("ERROR_STACK"));
+        Assertions.assertFalse(sqlSet.contains("RETRY_COUNT"));
+        Assertions.assertFalse(sqlSet.contains("ACTIVE_KEY"));
+        Assertions.assertTrue(wrapperCaptor.getValue().getParamNameValuePairs().containsValue(EtlJobStatus.RUNNING.name()));
+    }
+
+    @Test
     void queueDocumentIngestionSkipsWhenActiveJobAlreadyExists() throws Exception {
         EtlJobMapper mapper = mock(EtlJobMapper.class);
         EtlJobServiceImpl service = new EtlJobServiceImpl(mapper);

@@ -1,6 +1,7 @@
 package net.topikachu.rag.service.etl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import net.topikachu.rag.business.document.entity.Document;
 import net.topikachu.rag.business.document.entity.KnowledgeParentBlock;
@@ -20,6 +21,8 @@ public class KnowledgeParentBlockService {
 
     // 每次父块-子块 schema 变更时递增此版本号，Milvus 检索时按此过滤，隔离不同格式的历史数据
     public static final int CHUNK_SCHEMA_VERSION = 2;
+
+    private final Gson gson = new Gson();
 
     private final KnowledgeParentBlockMapper parentBlockMapper;
 
@@ -84,7 +87,7 @@ public class KnowledgeParentBlockService {
                 Wrappers.<KnowledgeParentBlock>lambdaUpdate()
                         .set(KnowledgeParentBlock::getFileName, doc.getFileName())
                         .set(KnowledgeParentBlock::getSpaceCode, doc.getSpaceCode())
-                        .set(KnowledgeParentBlock::getTags, doc.getTags())
+                        .set(KnowledgeParentBlock::getTags, doc.getTags() == null ? null : gson.toJson(doc.getTags()))
                         .set(KnowledgeParentBlock::getAclVersion, doc.getAclVersion())
                         .set(KnowledgeParentBlock::getUpdateDate, LocalDateTime.now())
                         .eq(KnowledgeParentBlock::getDocUuid, doc.getDocUuid()));

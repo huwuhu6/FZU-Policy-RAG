@@ -211,6 +211,7 @@ public class EtlJobWorker {
                                     .set(EtlJob::getStatus, EtlJobStatus.SUCCESS.name())
                                     .set(EtlJob::getLockedBy, null)
                                     .set(EtlJob::getLockedUntil, null)
+                                    .set(EtlJob::getNextRetryTime, null)
                                     .set(EtlJob::getLastError, null)
                                     .set(EtlJob::getErrorStack, null)
                                     .set(EtlJob::getUpdateDate, now)

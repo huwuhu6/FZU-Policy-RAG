@@ -233,9 +233,10 @@ public class EtlPipeline {
         if (storedDocument != null && storedDocument.getTags() != null) {
             effectiveTags = storedDocument.getTags();
         }
+        String canonicalFileName = resolveCanonicalFileName(etlContext, storedDocument);
         for (KnowledgeParentBlock parentBlock : docs.parentBlocks()) {
             parentBlock.setDocUuid(etlContext.docUuid());
-            parentBlock.setFileName(etlContext.fileName());
+            parentBlock.setFileName(canonicalFileName);
             parentBlock.setSpaceCode(resolveSpaceCode(storedDocument));
             parentBlock.setTags(effectiveTags == null ? List.of() : List.copyOf(effectiveTags));
             parentBlock.setAclVersion(storedDocument == null ? 1 : storedDocument.getAclVersion());
@@ -245,7 +246,7 @@ public class EtlPipeline {
             Map<String, Object> rebuiltMetadata = metadataBuilder.build(
                     storedDocument,
                     etlContext.docUuid,
-                    etlContext.fileName(),
+                    canonicalFileName,
                     effectiveTags,
                     child.getMetadata(),
                     storedDocument == null ? 1 : storedDocument.getAclVersion());
@@ -253,6 +254,16 @@ public class EtlPipeline {
             child.getMetadata().putAll(rebuiltMetadata);
         }
         return docs;
+    }
+
+    private String resolveCanonicalFileName(EtlContext etlContext,
+                                            net.topikachu.rag.business.document.entity.Document storedDocument) {
+        if (storedDocument != null
+                && storedDocument.getFileName() != null
+                && !storedDocument.getFileName().isBlank()) {
+            return storedDocument.getFileName();
+        }
+        return etlContext.fileName();
     }
 
     // 未指定 spaceCode 时默认归入 "public"，避免向量数据无法按空间检索

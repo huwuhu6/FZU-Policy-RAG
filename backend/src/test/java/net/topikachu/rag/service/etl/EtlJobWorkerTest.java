@@ -87,6 +87,32 @@ class EtlJobWorkerTest {
     }
 
     @Test
+    void markSuccessClearsRetryScheduleAndRuntimeErrorFields() {
+        WorkerFixture f = new WorkerFixture();
+        EtlJob job = pendingJob();
+        job.setStatus(EtlJobStatus.RUNNING.name());
+        job.setNextRetryTime(LocalDateTime.now().plusMinutes(5));
+        job.setFinishedAt(LocalDateTime.now().minusMinutes(1));
+        job.setLastError("old error");
+        job.setErrorStack("old stack");
+        when(f.etlJobMapper.update(isNull(), any())).thenReturn(1);
+
+        Mono<?> result = ReflectionTestUtils.invokeMethod(f.worker, "markSuccess", job);
+        result.block();
+
+        ArgumentCaptor<LambdaUpdateWrapper<EtlJob>> wrapperCaptor =
+                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(f.etlJobMapper).update(isNull(), wrapperCaptor.capture());
+        String sqlSet = wrapperCaptor.getValue().getSqlSet().toUpperCase();
+        Assertions.assertTrue(sqlSet.contains("NEXT_RETRY_TIME"));
+        Assertions.assertTrue(sqlSet.contains("LOCKED_BY"));
+        Assertions.assertTrue(sqlSet.contains("LOCKED_UNTIL"));
+        Assertions.assertTrue(sqlSet.contains("LAST_ERROR"));
+        Assertions.assertTrue(sqlSet.contains("ERROR_STACK"));
+        Assertions.assertTrue(sqlSet.contains("ACTIVE_KEY"));
+    }
+
+    @Test
     void pollOnceProcessesBatchDeterministicallyWithBoundedConcurrency() throws Exception {
         WorkerFixture f = new WorkerFixture();
         ReflectionTestUtils.setField(f.worker, "batchsize", 3);

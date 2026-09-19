@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.topikachu.rag.business.document.entity.AclRefreshStatus;
 import net.topikachu.rag.business.document.entity.Document;
+import net.topikachu.rag.business.document.entity.DocumentStatus;
 import net.topikachu.rag.business.document.entity.KnowledgeAclRefreshTask;
 import net.topikachu.rag.business.document.mapper.DocumentMapper;
 import net.topikachu.rag.business.document.mapper.KnowledgeAclRefreshTaskMapper;
@@ -67,15 +68,25 @@ public class AclRefreshManager {
         existing.setLastError(null);
         existing.setNextRetryTime(now);
         existing.setUpdateDate(now);
-        aclRefreshTaskMapper.updateById(existing);
+        aclRefreshTaskMapper.update(null, new UpdateWrapper<KnowledgeAclRefreshTask>()
+                .set("status", existing.getStatus())
+                .set("retry_count", existing.getRetryCount())
+                .set("last_error", null)
+                .set("next_retry_time", now)
+                .set("update_date", now)
+                .eq("id", existing.getId()));
     }
 
     int backfillAclMetadata() {
         List<Document> docs = documentMapper.selectList(Wrappers.<Document>lambdaQuery()
                 .isNotNull(Document::getDocUuid)
-                .isNotNull(Document::getFileName));
+                .isNotNull(Document::getFileName)
+                .eq(Document::getStatus, DocumentStatus.COMPLETED.name()));
         int refreshed = 0;
         for (Document doc : docs) {
+            if (!DocumentStatus.COMPLETED.name().equals(doc.getStatus())) {
+                continue;
+            }
             prepareBackfillRefresh(doc);
             enqueue(doc);
             if (processSingle(doc.getDocUuid(), doc.getAclVersion())) {
@@ -152,8 +163,13 @@ public class AclRefreshManager {
         doc.setAclRefreshStatus(AclRefreshStatus.PENDING.name());
         doc.setAclRefreshError(null);
         doc.setAclRefreshTime(null);
-        doc.setUpdateDate(LocalDateTime.now());
-        documentMapper.updateById(doc);
+        documentMapper.update(null, new UpdateWrapper<Document>()
+                .set("acl_version", doc.getAclVersion())
+                .set("acl_refresh_status", doc.getAclRefreshStatus())
+                .set("acl_refresh_error", null)
+                .set("acl_refresh_time", null)
+                .set("update_date", LocalDateTime.now())
+                .eq("id", doc.getId()));
     }
 
     private Mono<Void> refreshVectorMetadata(Document doc) {
@@ -218,8 +234,14 @@ public class AclRefreshManager {
         task.setStatus(AclRefreshStatus.SUCCESS.name());
         task.setLastError(null);
         task.setNextRetryTime(null);
-        task.setUpdateDate(LocalDateTime.now());
-        aclRefreshTaskMapper.updateById(task);
+        LocalDateTime now = LocalDateTime.now();
+        task.setUpdateDate(now);
+        aclRefreshTaskMapper.update(null, new UpdateWrapper<KnowledgeAclRefreshTask>()
+                .set("status", task.getStatus())
+                .set("last_error", null)
+                .set("next_retry_time", null)
+                .set("update_date", now)
+                .eq("id", task.getId()));
     }
 
     private void markTaskFailed(KnowledgeAclRefreshTask task, String errorMessage) {
@@ -228,8 +250,15 @@ public class AclRefreshManager {
         task.setRetryCount(nextRetryCount);
         task.setLastError(errorMessage);
         task.setNextRetryTime(calculateNextRetryTime(nextRetryCount));
-        task.setUpdateDate(LocalDateTime.now());
-        aclRefreshTaskMapper.updateById(task);
+        LocalDateTime now = LocalDateTime.now();
+        task.setUpdateDate(now);
+        aclRefreshTaskMapper.update(null, new UpdateWrapper<KnowledgeAclRefreshTask>()
+                .set("status", task.getStatus())
+                .set("retry_count", task.getRetryCount())
+                .set("last_error", task.getLastError())
+                .set("next_retry_time", task.getNextRetryTime())
+                .set("update_date", now)
+                .eq("id", task.getId()));
     }
 
     private void markDocumentAclRefreshStatus(Document doc,
