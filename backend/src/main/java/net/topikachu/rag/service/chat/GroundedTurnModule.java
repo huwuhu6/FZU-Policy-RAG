@@ -62,6 +62,11 @@ public final class GroundedTurnModule {
                 .flatMap(result -> commit(command, result).thenReturn(result));
     }
 
+    public Mono<Void> commitDirectReply(Command command, String answer) {
+        Objects.requireNonNull(command, "command must not be null");
+        return commit(command, new Result(answer, "chitchat", List.of()));
+    }
+
     private Mono<List<Message>> loadHistory(String conversationId) {
         if (conversationId == null || conversationId.isBlank()) {
             return Mono.just(List.of());

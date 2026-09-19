@@ -42,6 +42,9 @@ class ChatServiceGroundedTurnTest {
     @Mock
     private GroundedTurnModule groundedTurnModule;
 
+    @Mock
+    private QueryPreProcessor queryPreProcessor;
+
     private ChatService service;
 
     @BeforeEach
@@ -51,7 +54,8 @@ class ChatServiceGroundedTurnTest {
                 strategyFactory,
                 reactiveChatGateway,
                 tracingSupport,
-                groundedTurnModule);
+                groundedTurnModule,
+                queryPreProcessor);
         ReflectionTestUtils.setField(service, "hybridTopK", 20);
         ReflectionTestUtils.setField(service, "rerankTopK", 10);
     }
@@ -70,8 +74,10 @@ class ChatServiceGroundedTurnTest {
                 "user-1", "user", "USER", "dept-1", "Dept", "space-1", false);
 
         when(tracingSupport.getCurrentTraceId()).thenReturn("trace-1");
+        when(queryPreProcessor.process("question", "conversation-1", "model-1"))
+                .thenReturn(Mono.just(new QueryPreProcessor.ProcessResult(false, null, "rewritten question")));
         when(retrievalPipeline.retrieveWithParentContexts(
-                eq("question"), eq(user), eq(SearchScope.empty()), eq(20), eq(10), anyMap()))
+                eq("rewritten question"), eq(user), eq(SearchScope.empty()), eq(20), eq(10), anyMap()))
                 .thenReturn(Mono.just(new RetrievalResult(List.of(candidate), List.of(parent))));
         when(groundedTurnModule.execute(any()))
                 .thenReturn(Mono.just(new GroundedTurnModule.Result("answer", "factual", List.of(usedSource))));
@@ -87,5 +93,27 @@ class ChatServiceGroundedTurnTest {
         assertEquals("rag", commandCaptor.getValue().mode());
         assertEquals(List.of(candidate), commandCaptor.getValue().candidateEvidence());
         assertEquals(List.of(parent), commandCaptor.getValue().parentContexts());
+    }
+
+    @Test
+    void chitChatSkipsRetrievalAndStillCommitsTurn() {
+        CurrentUserContext user = new CurrentUserContext(
+                "user-1", "user", "USER", "dept-1", "Dept", "space-1", false);
+        String reply = "同学你好！我是福州大学教务问答助手。";
+
+        when(tracingSupport.getCurrentTraceId()).thenReturn("trace-1");
+        when(queryPreProcessor.process("你好", "conversation-1", "model-1"))
+                .thenReturn(Mono.just(new QueryPreProcessor.ProcessResult(true, reply, "你好")));
+        when(groundedTurnModule.commitDirectReply(any(), eq(reply))).thenReturn(Mono.empty());
+
+        ChatService.ChatStreamResponse response = service.streamWithSources(
+                        "你好", "conversation-1", user, SearchScope.empty(), "model-1", "msg-1")
+                .block();
+
+        assertEquals(List.of(reply), response.flux().collectList().block());
+        assertEquals(List.of(), response.usedSources());
+        verify(retrievalPipeline, org.mockito.Mockito.never())
+                .retrieveWithParentContexts(any(), any(), any(), any(int.class), any(int.class), anyMap());
+        verify(groundedTurnModule).commitDirectReply(any(), eq(reply));
     }
 }

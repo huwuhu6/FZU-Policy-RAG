@@ -18,6 +18,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RetrievalPipelineParentContextTest {
@@ -74,11 +76,78 @@ class RetrievalPipelineParentContextTest {
                 .verify();
     }
 
+    @Test
+    void filtersLowScoresAndLimitsFinalChildrenBeforeParentExpansion() {
+        HybridSearchService searchService = mock(HybridSearchService.class);
+        RerankService rerankService = mock(RerankService.class);
+        TracingSupport tracingSupport = mock(TracingSupport.class);
+        KnowledgeParentBlockService parentBlockService = mock(KnowledgeParentBlockService.class);
+        RetrievalPipeline pipeline = new RetrievalPipeline(searchService, rerankService, tracingSupport, parentBlockService);
+        org.springframework.test.util.ReflectionTestUtils.setField(pipeline, "rerankScoreThreshold", 0.30d);
+        org.springframework.test.util.ReflectionTestUtils.setField(pipeline, "finalChildTopK", 2);
+
+        Document first = childWithScore("first", "ev-1", "parent-1", "doc-1", 0.90d);
+        Document second = childWithScore("second", "ev-2", "parent-2", "doc-1", 0.70d);
+        Document belowThreshold = childWithScore("low", "ev-3", "parent-3", "doc-1", 0.20d);
+        Document outsideFinalTopK = childWithScore("third", "ev-4", "parent-4", "doc-1", 0.60d);
+
+        when(tracingSupport.traceMono(anyString(), anyMap(), any())).thenAnswer(inv -> inv.getArgument(2));
+        when(searchService.hybridSearch(anyString(), any(), any(), anyInt(), anyBoolean()))
+                .thenReturn(Mono.just(List.of(first, second, belowThreshold, outsideFinalTopK)));
+        when(rerankService.rerank(anyString(), any(), anyInt()))
+                .thenReturn(Mono.just(List.of(first, second, belowThreshold, outsideFinalTopK)));
+        when(parentBlockService.findByParentBlockIds(List.of("parent-1", "parent-2")))
+                .thenReturn(Mono.just(Map.of(
+                        "parent-1", parent("parent-1", "doc-1", 1),
+                        "parent-2", parent("parent-2", "doc-1", 2))));
+
+        StepVerifier.create(pipeline.retrieveWithParentContexts("query", null, null, 10, 10, Map.of()))
+                .assertNext(result -> {
+                    assertEquals(List.of(first, second), result.childCandidates());
+                    assertEquals(2, result.parentContexts().size());
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void returnsEmptyWithoutParentLookupWhenAllRerankScoresAreBelowThreshold() {
+        HybridSearchService searchService = mock(HybridSearchService.class);
+        RerankService rerankService = mock(RerankService.class);
+        TracingSupport tracingSupport = mock(TracingSupport.class);
+        KnowledgeParentBlockService parentBlockService = mock(KnowledgeParentBlockService.class);
+        RetrievalPipeline pipeline = new RetrievalPipeline(searchService, rerankService, tracingSupport, parentBlockService);
+
+        Document low = childWithScore("low", "ev-1", "parent-1", "doc-1", 0.20d);
+        when(tracingSupport.traceMono(anyString(), anyMap(), any())).thenAnswer(inv -> inv.getArgument(2));
+        when(searchService.hybridSearch(anyString(), any(), any(), anyInt(), anyBoolean()))
+                .thenReturn(Mono.just(List.of(low)));
+        when(rerankService.rerank(anyString(), any(), anyInt()))
+                .thenReturn(Mono.just(List.of(low)));
+
+        StepVerifier.create(pipeline.retrieveWithParentContexts("query", null, null, 10, 10, Map.of()))
+                .assertNext(result -> {
+                    assertEquals(List.of(), result.childCandidates());
+                    assertEquals(List.of(), result.parentContexts());
+                })
+                .verifyComplete();
+
+        verify(parentBlockService, never()).findByParentBlockIds(any());
+    }
+
     private Document child(String text, String evidenceId, String parentBlockId, String docUuid) {
         return new Document(text, Map.of(
                 "evidence_id", evidenceId,
                 "parent_block_id", parentBlockId,
                 "doc_uuid", docUuid));
+    }
+
+    private Document childWithScore(String text, String evidenceId, String parentBlockId,
+                                    String docUuid, double rerankScore) {
+        return new Document(text, new java.util.HashMap<>(Map.of(
+                "evidence_id", evidenceId,
+                "parent_block_id", parentBlockId,
+                "doc_uuid", docUuid,
+                "rerank_score", rerankScore)));
     }
 
     private KnowledgeParentBlock parent(String parentBlockId, String docUuid, int index) {

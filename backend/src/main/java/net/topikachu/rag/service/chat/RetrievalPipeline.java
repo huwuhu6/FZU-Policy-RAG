@@ -7,6 +7,7 @@ import net.topikachu.rag.business.document.entity.KnowledgeParentBlock;
 import net.topikachu.rag.observability.TracingSupport;
 import net.topikachu.rag.service.etl.KnowledgeParentBlockService;
 import org.springframework.ai.document.Document;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
@@ -26,6 +27,12 @@ public class RetrievalPipeline {
     private final RerankService rerankService;
     private final TracingSupport tracingSupport;
     private final KnowledgeParentBlockService parentBlockService;
+
+    @Value("${rag.retrieval.rerank-score-threshold:0.30}")
+    private double rerankScoreThreshold = 0.30d;
+
+    @Value("${rag.retrieval.final-child-topk:6}")
+    private int finalChildTopK = 6;
 
     public RetrievalPipeline(HybridSearchService hybridSearchService,
                              RerankService rerankService,
@@ -61,8 +68,13 @@ public class RetrievalPipeline {
                                                             int rerankTopK,
                                                             Map<String, Object> extraTags) {
         return retrieveInternal(query, currentUserContext, searchScope, hybridTopK, rerankTopK, true, true, extraTags)
-                .flatMap(childCandidates -> expandParentContexts(childCandidates)
-                        .map(parentContexts -> new RetrievalResult(childCandidates, parentContexts)));
+                .flatMap(childCandidates -> {
+                    if (childCandidates == null || childCandidates.isEmpty()) {
+                        return Mono.just(new RetrievalResult(List.of(), List.of()));
+                    }
+                    return expandParentContexts(childCandidates)
+                            .map(parentContexts -> new RetrievalResult(childCandidates, parentContexts));
+                });
     }
 
     public Mono<List<Document>> retrieve(String query,
@@ -114,8 +126,52 @@ public class RetrievalPipeline {
                             .onErrorResume(error -> {
                                 log.warn("Rerank failed, fallback to raw candidates: {}", error.getMessage());
                                 return Mono.just(candidates.subList(0, Math.min(candidates.size(), rerankTopK)));
-                            });
+                            })
+                            .map(docs -> applyRerankPolicy(docs));
                 });
+    }
+
+    private List<Document> applyRerankPolicy(List<Document> documents) {
+        if (documents == null || documents.isEmpty()) {
+            return List.of();
+        }
+
+        boolean hasValidRerankScore = documents.stream()
+                .map(this::readRerankScore)
+                .anyMatch(Objects::nonNull);
+        int limit = Math.max(0, finalChildTopK);
+        if (!hasValidRerankScore) {
+            // Circuit-breaker/timeout fallback has no rerank_score; preserve raw candidates and only cap count.
+            return documents.stream().limit(limit).toList();
+        }
+
+        return documents.stream()
+                .filter(document -> {
+                    Double score = readRerankScore(document);
+                    return score != null && score >= rerankScoreThreshold;
+                })
+                .limit(limit)
+                .toList();
+    }
+
+    private Double readRerankScore(Document document) {
+        if (document == null || document.getMetadata() == null) {
+            return null;
+        }
+        Object value = document.getMetadata().get("rerank_score");
+        if (value instanceof Number number) {
+            double score = number.doubleValue();
+            return Double.isFinite(score) ? score : null;
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                double score = Double.parseDouble(text.trim());
+                return Double.isFinite(score) ? score : null;
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     // 子块回查父块：将检索命中的子块按 parent_block_id 去重聚合，批量查询 MySQL 获取完整父块上下文

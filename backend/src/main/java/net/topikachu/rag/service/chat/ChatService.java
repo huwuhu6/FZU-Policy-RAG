@@ -32,8 +32,9 @@ public class ChatService {
     private final ReactiveChatGateway reactiveChatGateway;
     private final TracingSupport tracingSupport;
     private final GroundedTurnModule groundedTurnModule;
+    private final QueryPreProcessor queryPreProcessor;
 
-    @Value("${rag.retrieval.hybrid-topk:20}")
+    @Value("${rag.retrieval.hybrid-topk:80}")
     private int hybridTopK;
 
     @Value("${rag.retrieval.rerank-topk:10}")
@@ -46,12 +47,14 @@ public class ChatService {
             ChatModelStrategyFactory strategyFactory,
             ReactiveChatGateway reactiveChatGateway,
             TracingSupport tracingSupport,
-            GroundedTurnModule groundedTurnModule) {
+            GroundedTurnModule groundedTurnModule,
+            QueryPreProcessor queryPreProcessor) {
         this.retrievalPipeline = retrievalPipeline;
         this.strategyFactory = strategyFactory;
         this.reactiveChatGateway = reactiveChatGateway;
         this.tracingSupport = tracingSupport;
         this.groundedTurnModule = groundedTurnModule;
+        this.queryPreProcessor = queryPreProcessor;
     }
 
     public record ChatStreamResponse(Flux<String> flux, List<UsedSource> usedSources) {
@@ -75,22 +78,47 @@ public class ChatService {
 
         String traceId = tracingSupport.getCurrentTraceId();
 
-        return retrievalPipeline.retrieveWithParentContexts(userInput, currentUserContext, searchScope, hybridTopK, rerankTopK,
-                        Map.of(
-                                "chat.mode", "rag",
-                                "chat.model_id", modelId == null ? "" : modelId,
-                                "chat.conversation_id", conversationId == null ? "" : conversationId))
-                .flatMap(retrievalResult -> groundedTurnModule.execute(new GroundedTurnModule.Command(
-                        userInput,
-                        conversationId,
-                        currentUserContext.userId(),
-                        modelId,
-                        "rag",
-                        msgId,
-                        traceId,
-                        retrievalResult.childCandidates(),
-                        retrievalResult.parentContexts())))
-                .map(result -> new ChatStreamResponse(Flux.just(result.answer()), result.usedSources()));
+        return queryPreProcessor.process(userInput, conversationId, modelId)
+                .flatMap(processed -> {
+                    GroundedTurnModule.Command command = new GroundedTurnModule.Command(
+                            userInput,
+                            conversationId,
+                            currentUserContext.userId(),
+                            modelId,
+                            "rag",
+                            msgId,
+                            traceId,
+                            List.of(),
+                            List.of());
+                    if (processed.isChitChat()) {
+                        return groundedTurnModule.commitDirectReply(command, processed.directReply())
+                                .thenReturn(new ChatStreamResponse(
+                                        Flux.just(processed.directReply()),
+                                        List.of()));
+                    }
+
+                    return retrievalPipeline.retrieveWithParentContexts(
+                                    processed.searchTargetQuery(),
+                                    currentUserContext,
+                                    searchScope,
+                                    hybridTopK,
+                                    rerankTopK,
+                                    Map.of(
+                                            "chat.mode", "rag",
+                                            "chat.model_id", modelId == null ? "" : modelId,
+                                            "chat.conversation_id", conversationId == null ? "" : conversationId))
+                            .flatMap(retrievalResult -> groundedTurnModule.execute(new GroundedTurnModule.Command(
+                                    userInput,
+                                    conversationId,
+                                    currentUserContext.userId(),
+                                    modelId,
+                                    "rag",
+                                    msgId,
+                                    traceId,
+                                    retrievalResult.childCandidates(),
+                                    retrievalResult.parentContexts())))
+                            .map(result -> new ChatStreamResponse(Flux.just(result.answer()), result.usedSources()));
+                });
     }
 
     /**

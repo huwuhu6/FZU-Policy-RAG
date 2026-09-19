@@ -167,6 +167,18 @@ V1 仅覆盖福州大学教务处三个确定栏目和有限通知页数；不�
 
 使用临时 18080 端口启动后端进行真实回归，前端请求语义对应的 payload 使用 `modelId=qwen`。`你是？` 请求成功返回无来源回答；“我是2024级本科生，现在申请转专业，应该按照哪一版规定？”请求成功返回非空 evidence sources 和政策回答，未出现 Retrieval、Embedding 或 reset 错误。没有修改 Java、Embedding、Rerank、Milvus 或检索算法。
 
+## 2026-09-19｜增加 RAG 查询前处理与结果收口
+
+### 方案
+
+在 `mode=rag` 主链增加 QueryPreProcessor：精准问候和空白输入直接返回教务助手引导语，并通过现有 ChatModelStrategyFactory 与 ReactiveChatGateway 对带上下文的问题做查询重写。历史只取最近 4 条消息，Prompt 明确禁止新增未出现的学院、年份、身份、政策名称或条件。ChitChat 不经过 Retrieval 和 LLM，但复用 GroundedTurnModule 的 ChatMemory/ChatHistory 提交屏障保存本轮会话。
+
+RetrievalPipeline 将 hybrid-topk 修正为 80，并在正常 Rerank 结果上应用 `rerank-score-threshold=0.30` 与 `final-child-topk=6`。Rerank 超时、熔断或异常返回无 `rerank_score` 的原始候选时保留 fallback 语义，仅做数量截断；阈值过滤为空时不查询 MySQL 父块，交由主链执行标准依据不足处理。
+
+### 验证与限制
+
+`mvn clean`、定向 12 个用例和 `mvn -DskipTests compile` 通过。全量测试 159 个用例中 157 个通过；`ReactiveRefactorGuardTest` 的既有 Agent/ETL `.block()` 守卫问题和未启动 Milvus 导致的 `MilvusSparseTest` `DEADLINE_EXCEEDED` 仍存在，均未为本次功能修改。
+
 ## 2026-09-19｜切换百炼 OpenAI-compatible Chat 适配层
 
 ### 现象与根因

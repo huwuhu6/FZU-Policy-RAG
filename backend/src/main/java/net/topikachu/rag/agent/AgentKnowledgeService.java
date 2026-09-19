@@ -19,7 +19,7 @@ public class AgentKnowledgeService {
     private final RetrievalPipeline retrievalPipeline;
     private final DocumentService documentService;
 
-    @Value("${rag.retrieval.hybrid-topk:30}")
+    @Value("${rag.retrieval.hybrid-topk:80}")
     private int hybridTopK;
 
     @Value("${rag.retrieval.rerank-topk:10}")
