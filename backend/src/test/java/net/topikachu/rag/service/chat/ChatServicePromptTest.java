@@ -12,13 +12,15 @@ class ChatServicePromptTest {
     void sourcedAnswerPromptUsesDedicatedJsonContract() {
         String prompt = SourcedAnswerPrompts.jsonPrompt();
 
-        assertTrue(prompt.contains("JSON 字段固定为 answer、answerType、usedSources"));
         assertTrue(prompt.contains("usedSources 必须是字符串数组"));
         assertTrue(prompt.contains("会话历史只用于理解指代"));
         assertTrue(prompt.contains("最终答案实际采用的 evidenceId"));
-        assertTrue(prompt.contains("不要输出对象数组"));
+        assertTrue(prompt.contains("answerType 输出 factual"));
+        assertTrue(prompt.contains("answerType 输出 refusal"));
         assertTrue(prompt.contains("{context}"));
         assertEquals(1, countOccurrences(prompt, "{context}"));
+        assertFalse(prompt.contains("JSON 字段固定为"));
+        assertFalse(prompt.contains("不要输出对象数组"));
         assertFalse(prompt.contains("原系统要求"));
         assertFalse(prompt.contains("请直接回答"));
     }

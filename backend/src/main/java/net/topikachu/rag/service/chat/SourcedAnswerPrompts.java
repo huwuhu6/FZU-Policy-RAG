@@ -1,5 +1,12 @@
 package net.topikachu.rag.service.chat;
 
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.ResponseFormat;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 public final class SourcedAnswerPrompts {
 
     private static final String GROUNDING_RULES = """
@@ -28,15 +35,44 @@ public final class SourcedAnswerPrompts {
 
     public static String jsonPrompt() {
         return GROUNDING_RULES + """
-                9. 你必须且只能输出合法 JSON 对象，不要输出 Markdown 代码块或额外文字。
-                10. JSON 字段固定为 answer、answerType、usedSources。
-                11. answer 必填且不能为空；answerType 只能是 factual 或 refusal。
-                12. usedSources 只输出字符串数组，例如 [\"docUuid:child:1:hash\"]；不要输出对象数组，不要输出 docUuid、fileName、pageNumber、fileType，也不要输出 parent_block_id。
-                13. 输出必须是单个 JSON object；第一个字符是英文左花括号，最后一个字符是英文右花括号。
-                14. factual 时 answerType=factual，answer 中必须包含段落引用，usedSources 必须列出实际采用的 evidenceId。
-                15. refusal 时 answerType=refusal，answer 说明当前知识库没有足够信息，usedSources 必须是空数组。
-                16. 不要输出内部思考、解释、代码块或 JSON 之外的任何文字。
+                9. factual 时 answerType=factual，answer 中必须包含段落引用，usedSources 必须列出实际采用的 evidenceId。
+                10. refusal 时 answerType=refusal，answer 说明当前知识库没有足够信息，usedSources 必须是空数组。
                 """ + CONTEXT;
+    }
+
+    /**
+     * JSON Schema is carried by the OpenAI-compatible request. The prompt
+     * remains responsible for grounding rules, not wire-format instructions.
+     */
+    public static OpenAiChatOptions structuredOutputOptions() {
+        return OpenAiChatOptions.builder()
+                .responseFormat(ResponseFormat.builder()
+                        .type(ResponseFormat.Type.JSON_SCHEMA)
+                        .jsonSchema(ResponseFormat.JsonSchema.builder()
+                                .name("sourced_answer")
+                                .schema(sourcedAnswerSchema())
+                                .strict(true)
+                                .build())
+                        .build())
+                .build();
+    }
+
+    static Map<String, Object> sourcedAnswerSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("answer", Map.of("type", "string"));
+        properties.put("answerType", Map.of(
+                "type", "string",
+                "enum", List.of("factual", "refusal")));
+        properties.put("usedSources", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string")));
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("answer", "answerType", "usedSources"));
+        schema.put("additionalProperties", false);
+        return schema;
     }
 
     public static String toolPrompt() {

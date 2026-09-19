@@ -192,3 +192,19 @@ Embedding、Milvus 和 Rerank 均可完成，但 Qwen Chat 使用 `DashScopeChat
 ### 验证与当前限制
 
 `mvn clean`、Chat 策略/Factory、`ReactiveChatGateway`、`ChatModelStrategy`、`GroundedTurnModule` 定向测试和 `mvn -DskipTests compile` 均通过。使用不含真实 Key 的临时配置启动 8081 端口时，Spring 上下文完成装配并监听端口；真实 DashScope 请求因占位凭据返回 401，未将其作为 Chat 功能结果。当前工具进程无法继承用户新 Key，因此真实 endpoint 抓取、structured raw JSON 和 10 次稳定性统计待使用有效本地环境变量重新启动后完成。本轮未重新加入任何代理配置，未修改 Embedding、Rerank、Milvus 或检索参数。
+
+## 2026-09-19｜收口 RAG 聊天超时、流式缓冲与结构化回答
+
+### 起因与方案
+
+此前 DashScope OpenAI-compatible Chat 使用默认 HTTP 客户端，日志显示请求在约 10 秒读取超时；同时标准 RAG 虽然对外保持 SSE，但模型调用实际按一次性结果返回。现为 Chat 专用的 OpenAiApi 配置独立连接/读取超时，默认分别为 5 秒和 60 秒，继续复用 Spring AI 自动创建的 `openAiChatModel`，不改变 Embedding、Rerank 或 Milvus 客户端。
+
+标准 RAG 的查询重写和 Qwen grounded answer 改为使用 `ChatClient.stream()`，在后端按顺序缓冲完整结果后再执行 JSON 解析、UsedSource 校验和会话持久化；外部 SSE 契约不变，不向前端暴露模型 token。Qwen grounded answer 使用严格 JSON Schema（`answer`、`answerType`、`usedSources`），Agent/其他模型仍保留原有工具调用和兼容解析路径。
+
+查询重写只取最近 4 条历史消息，并将超时、异常或空结果统一 fail-open 到规范化原问题；异常日志记录 conversationId、modelId、异常类型和 fallback tracing 标签，不吞掉后续检索异常。
+
+### 验证与当前限制
+
+新增 Chat HTTP 配置、结构化解析、流式片段顺序和 Query Rewrite fallback 测试。定向 34 个测试全部通过；`mvn clean compile` 通过。定向测试在本机 JDK 21 下需要 Surefire 启用动态 agent 参数，这是 Mockito 测试运行环境要求，未修改项目生产配置。
+
+真实 smoke test 首次使用旧 PowerShell 进程继承的旧凭据，Embedding 和 Chat 均返回 DashScope `401 invalid_api_key`；核对环境变量长度后确认该进程值与 Machine 级新值不同。临时启动新 JVM 并显式使用 Machine 级环境变量后，Embedding、Milvus、Rerank 和 Qwen Chat 均返回成功。无历史政策问题、带历史追问和 ChitChat 均完成验证；ChitChat 返回固定引导文本且不触发 Embedding/Rerank，正常回答返回非空 evidence。主回答通过 `ChatClient.stream()` 获取模型结果并在后端缓冲后校验，外部仍保持 SSE；会话标题服务仍有独立的非流式标题请求，不属于 RAG 回答主链。查询重写异常/超时的 fail-open 由定向测试覆盖。未记录或提交任何真实 API Key。

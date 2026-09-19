@@ -1,6 +1,7 @@
 package net.topikachu.rag.service.chat;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import net.topikachu.rag.observability.TracingSupport;
@@ -25,6 +26,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
 
@@ -68,6 +71,75 @@ public class ReactiveChatGateway {
                         .call()
                         .content())
                         .subscribeOn(Schedulers.boundedElastic()));
+    }
+
+    /**
+     * Calls the model with HTTP streaming enabled, then buffers the ordered
+     * chunks for a caller that still needs an atomic business result.
+     */
+    public Mono<String> callBufferedStream(ChatClient chatClient,
+                                            String systemText,
+                                            Map<String, Object> systemParams,
+                                            String userText) {
+        return callBufferedStream(chatClient, systemText, systemParams, userText, null, null);
+    }
+
+    public Mono<String> callBufferedStream(ChatClient chatClient,
+                                            String systemText,
+                                            Map<String, Object> systemParams,
+                                            String userText,
+                                            String conversationId,
+                                            MessageChatMemoryAdvisor chatMemoryAdvisor) {
+        return tracingSupport.traceFlux("llm.chat_stream_buffered",
+                        Map.of(
+                                "llm.conversation_id", conversationId == null ? "" : conversationId,
+                                "llm.prompt_chars", systemText == null ? 0 : systemText.length(),
+                                "llm.user_chars", userText == null ? 0 : userText.length()),
+                        buildPrompt(chatClient, systemText, systemParams, userText,
+                                        conversationId, chatMemoryAdvisor)
+                                .stream()
+                                .content())
+                .filter(Objects::nonNull)
+                .collectList()
+                .map(ReactiveChatGateway::joinStreamChunks);
+    }
+
+    /**
+     * Uses JSON Schema Structured Output while keeping the complete validated
+     * result behind a Mono for UsedSourceValidator and persistence.
+     */
+    public Mono<SourcedAnswerResult> callBufferedSourcedAnswer(
+            ChatClient chatClient,
+            String systemText,
+            Map<String, Object> systemParams,
+            List<Message> historyMessages,
+            String userText,
+            String conversationId) {
+        List<Message> messages = new ArrayList<>(historyMessages == null ? List.of() : historyMessages);
+        messages.add(UserMessage.builder().text(userText).build());
+        return tracingSupport.traceFlux("llm.sourced_answer_stream_buffered",
+                        Map.of(
+                                "llm.conversation_id", conversationId == null ? "" : conversationId,
+                                "llm.prompt_chars", systemText == null ? 0 : systemText.length(),
+                                "llm.history_messages", historyMessages == null ? 0 : historyMessages.size()),
+                        buildPrompt(chatClient, systemText, systemParams,
+                                        messages, List.of(), List.of(), Map.of())
+                                .options(SourcedAnswerPrompts.structuredOutputOptions())
+                                .stream()
+                                .content())
+                .filter(Objects::nonNull)
+                .collectList()
+                .map(ReactiveChatGateway::joinStreamChunks)
+                .map(raw -> decodeStrictSourcedAnswer(raw, objectMapper));
+    }
+
+    static String joinStreamChunks(List<String> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return "";
+        }
+        return chunks.stream()
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.joining());
     }
 
     public <T> Mono<T> callStructured(ChatClient chatClient,
@@ -395,6 +467,47 @@ public class ReactiveChatGateway {
         log.debug("No JSON object found in structured response. Raw (first 500 chars): {}",
                 raw.substring(0, Math.min(raw.length(), 500)));
         throw new IllegalArgumentException("Could not parse structured tool-phase response.");
+    }
+
+    static SourcedAnswerResult decodeStrictSourcedAnswer(String raw, ObjectMapper objectMapper) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException("LLM returned blank sourced answer JSON.");
+        }
+        try {
+            JsonNode root = objectMapper.readTree(raw);
+            if (root == null || !root.isObject()) {
+                throw new IllegalArgumentException("Sourced answer must be a JSON object.");
+            }
+
+            Set<String> allowedFields = Set.of("answer", "answerType", "usedSources");
+            var fields = root.fieldNames();
+            while (fields.hasNext()) {
+                String field = fields.next();
+                if (!allowedFields.contains(field)) {
+                    throw new IllegalArgumentException("Unexpected sourced answer field: " + field);
+                }
+            }
+            if (!root.has("answer") || !root.has("answerType") || !root.has("usedSources")) {
+                throw new IllegalArgumentException("Sourced answer is missing a required field.");
+            }
+            if (!root.path("answer").isTextual()
+                    || !root.path("answerType").isTextual()
+                    || !root.path("usedSources").isArray()) {
+                throw new IllegalArgumentException("Sourced answer has invalid field types.");
+            }
+            String answerType = root.path("answerType").asText();
+            if (!"factual".equals(answerType) && !"refusal".equals(answerType)) {
+                throw new IllegalArgumentException("Sourced answer has an invalid answerType.");
+            }
+            for (JsonNode source : root.path("usedSources")) {
+                if (!source.isTextual()) {
+                    throw new IllegalArgumentException("usedSources must contain only strings.");
+                }
+            }
+            return objectMapper.readValue(raw, SourcedAnswerResult.class);
+        } catch (JsonProcessingException error) {
+            throw new IllegalArgumentException("Could not parse sourced answer JSON.", error);
+        }
     }
 
     static String extractStructuredJson(String raw) {

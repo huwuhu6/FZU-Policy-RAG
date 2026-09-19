@@ -26,13 +26,12 @@ public interface ChatModelStrategy {
                                                         String userInput,
                                                         String conversationId,
                                                         List<Message> historyMessages) {
-        return reactiveChatGateway.callStructured(
+        return reactiveChatGateway.callBufferedSourcedAnswer(
                 getChatClient(),
                 SourcedAnswerPrompts.jsonPrompt(),
                 Map.of("context", context),
                 historyMessages,
                 userInput,
-                conversationId,
-                SourcedAnswerResult.class);
+                conversationId);
     }
 }

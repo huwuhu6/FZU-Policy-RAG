@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 class ChatModelStrategyTest {
 
     @Test
-    void defaultSourcedAnswerUsesStructuredJsonCall() {
+    void defaultSourcedAnswerUsesBufferedStructuredStream() {
         ChatClient chatClient = mock(ChatClient.class);
         ReactiveChatGateway gateway = mock(ReactiveChatGateway.class);
         List<Message> history = List.of(new UserMessage("previous question"));
@@ -38,14 +38,13 @@ class ChatModelStrategyTest {
             }
         };
 
-        when(gateway.callStructured(
+        when(gateway.callBufferedSourcedAnswer(
                 same(chatClient),
                 eq(SourcedAnswerPrompts.jsonPrompt()),
                 eq(Map.of("context", "ctx")),
                 same(history),
                 eq("question"),
-                eq("conversation-1"),
-                eq(SourcedAnswerResult.class)))
+                eq("conversation-1")))
                 .thenReturn(Mono.just(expected));
 
         StepVerifier.create(strategy.callSourcedAnswer(

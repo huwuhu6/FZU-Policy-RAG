@@ -8,6 +8,7 @@ import org.springframework.ai.openai.api.OpenAiApi;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -75,6 +76,50 @@ class ReactiveChatGatewayTest {
 
         assertEquals("factual", result.answerType());
         assertEquals("ev-1", result.usedSources().get(0));
+    }
+
+    @Test
+    void strictSourcedAnswerParsesFactualAndRefusalJson() {
+        SourcedAnswerResult factual = ReactiveChatGateway.decodeStrictSourcedAnswer(
+                "{\"answer\":\"答案\",\"answerType\":\"factual\",\"usedSources\":[\"ev-1\"]}",
+                objectMapper);
+        SourcedAnswerResult refusal = ReactiveChatGateway.decodeStrictSourcedAnswer(
+                "{\"answer\":\"无法可靠回答\",\"answerType\":\"refusal\",\"usedSources\":[]}",
+                objectMapper);
+
+        assertEquals("factual", factual.answerType());
+        assertEquals(List.of("ev-1"), factual.usedSources());
+        assertEquals("refusal", refusal.answerType());
+        assertEquals(List.of(), refusal.usedSources());
+    }
+
+    @Test
+    void strictSourcedAnswerRejectsInvalidShape() {
+        assertThrows(IllegalArgumentException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
+                "{\"answer\":\"答案\",\"answerType\":\"unknown\",\"usedSources\":[]}", objectMapper));
+        assertThrows(IllegalArgumentException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
+                "{\"answer\":\"答案\",\"usedSources\":[]}", objectMapper));
+        assertThrows(IllegalArgumentException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
+                "{\"answer\":\"答案\",\"answerType\":\"factual\",\"usedSources\":[],\"extra\":true}", objectMapper));
+    }
+
+    @Test
+    void strictSchemaOptionsDeclareJsonSchemaAndStrictMode() {
+        var responseFormat = SourcedAnswerPrompts.structuredOutputOptions().getResponseFormat();
+
+        assertEquals(org.springframework.ai.openai.api.ResponseFormat.Type.JSON_SCHEMA, responseFormat.getType());
+        assertEquals("sourced_answer", responseFormat.getJsonSchema().getName());
+        assertEquals(true, responseFormat.getJsonSchema().getStrict());
+        assertDoesNotThrow(() -> responseFormat.getJsonSchema().getSchema().get("required"));
+    }
+
+    @Test
+    void joinsStreamingFragmentsInOrder() {
+        String json = ReactiveChatGateway.joinStreamChunks(List.of(
+                "{\"ans", "wer\":\"abc\",", "\"answerType\":\"factual\",",
+                "\"usedSources\":[\"id1\"]}"));
+
+        assertEquals("{\"answer\":\"abc\",\"answerType\":\"factual\",\"usedSources\":[\"id1\"]}", json);
     }
 
     @Test

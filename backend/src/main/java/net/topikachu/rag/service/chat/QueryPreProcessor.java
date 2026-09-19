@@ -1,5 +1,7 @@
 package net.topikachu.rag.service.chat;
 
+import lombok.extern.slf4j.Slf4j;
+import net.topikachu.rag.observability.TracingSupport;
 import net.topikachu.rag.service.chat.strategy.ChatModelStrategyFactory;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -18,6 +20,7 @@ import java.util.stream.Collectors;
  * Performs the cheap conversational pre-processing that must happen before retrieval.
  */
 @Component
+@Slf4j
 public class QueryPreProcessor {
 
     private static final String DIRECT_REPLY =
@@ -36,13 +39,16 @@ public class QueryPreProcessor {
     private final ChatMemory chatMemory;
     private final ChatModelStrategyFactory strategyFactory;
     private final ReactiveChatGateway reactiveChatGateway;
+    private final TracingSupport tracingSupport;
 
     public QueryPreProcessor(ChatMemory chatMemory,
                              ChatModelStrategyFactory strategyFactory,
-                             ReactiveChatGateway reactiveChatGateway) {
+                             ReactiveChatGateway reactiveChatGateway,
+                             TracingSupport tracingSupport) {
         this.chatMemory = chatMemory;
         this.strategyFactory = strategyFactory;
         this.reactiveChatGateway = reactiveChatGateway;
+        this.tracingSupport = tracingSupport;
     }
 
     public Mono<ProcessResult> process(String userInput, String conversationId, String modelId) {
@@ -57,15 +63,31 @@ public class QueryPreProcessor {
                         return Mono.just(new ProcessResult(false, null, normalizedInput));
                     }
                     String renderedHistory = renderHistory(history);
-                    return reactiveChatGateway.call(
+                    Mono<ProcessResult> rewrite = Mono.defer(() -> reactiveChatGateway.callBufferedStream(
                                     strategyFactory.getStrategy(modelId).getChatClient(),
                                     REWRITE_PROMPT,
                                     Map.of("history", renderedHistory),
-                                    normalizedInput)
+                                    normalizedInput))
                             .map(rewrittenQuery -> new ProcessResult(
                                     false,
                                     null,
-                                    normalizeRewrite(rewrittenQuery, normalizedInput)));
+                                    normalizeRewrite(rewrittenQuery, normalizedInput)))
+                            .onErrorResume(error -> {
+                                log.warn("Query rewrite failed: conversationId={}, modelId={}, fallback=true, exceptionType={}",
+                                        conversationId,
+                                        modelId,
+                                        error.getClass().getSimpleName());
+                                tracingSupport.tagCurrent(Map.of(
+                                        "rag.query_rewrite.fallback", true,
+                                        "rag.query_rewrite.error_type", error.getClass().getSimpleName()));
+                                return Mono.just(new ProcessResult(false, null, normalizedInput));
+                            });
+                    return tracingSupport.traceMono(
+                            "rag.query_rewrite",
+                            Map.of(
+                                    "rag.query_rewrite.history_messages", history.size(),
+                                    "rag.query_rewrite.model_id", modelId == null ? "" : modelId),
+                            rewrite);
                 });
     }
 
