@@ -25,15 +25,13 @@ class ChatModelStrategyFactoryTest {
     }
 
     @Test
-    void shouldResolveDashScopeAndQwenStrategiesByModelId() {
+    void shouldResolveQwenStrategyByModelId() {
         ChatModel mockModel = mock(ChatModel.class);
 
-        ChatModelStrategy dashScope = new DashScopeChatModelStrategy(mockModel);
         ChatModelStrategy qwen = new QwenChatModelStrategy(mockModel);
 
-        ChatModelStrategyFactory factory = new ChatModelStrategyFactory(List.of(dashScope, qwen));
+        ChatModelStrategyFactory factory = new ChatModelStrategyFactory(List.of(qwen));
 
-        assertEquals("dashscope", factory.getStrategy("dashscope").getModelId());
         assertEquals("qwen", factory.getStrategy("qwen").getModelId());
     }
 }

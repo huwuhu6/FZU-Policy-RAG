@@ -166,3 +166,17 @@ V1 仅覆盖福州大学教务处三个确定栏目和有限通知页数；不�
 本机到 `dashscope.aliyuncs.com:443` 的 TCP 连接成功；环境变量和 Windows 系统代理均配置为本地代理。PowerShell/curl 的 Schannel smoke 报 `SEC_E_NO_CREDENTIALS`，没有得到 HTTP 响应。使用 Java HTTPS 客户端分别直连和显式使用本地代理请求同一 Embedding 接口，两种方式均返回 HTTP 200，模型、1024 维、`dense&sparse` 和 `query` 参数均成功。结合此前 Java WebClient 的单次 `Connection reset`，当前证据支持临时网络/TLS/代理波动，不支持增加固定代理或修改 Java HTTP 客户端。
 
 使用临时 18080 端口启动后端进行真实回归，前端请求语义对应的 payload 使用 `modelId=qwen`。`你是？` 请求成功返回无来源回答；“我是2024级本科生，现在申请转专业，应该按照哪一版规定？”请求成功返回非空 evidence sources 和政策回答，未出现 Retrieval、Embedding 或 reset 错误。没有修改 Java、Embedding、Rerank、Milvus 或检索算法。
+
+## 2026-09-19｜切换百炼 OpenAI-compatible Chat 适配层
+
+### 现象与根因
+
+Embedding、Milvus 和 Rerank 均可完成，但 Qwen Chat 使用 `DashScopeChatModel` 时，运行时却通过 `OpenAiChatOptions(response_format=json_object)` 请求结构化输出；两套适配层的请求契约不一致，导致 structured grounded answer 不能稳定解析。
+
+### 方案
+
+保留 DashScope native Embedding、Rerank 和 starter 提供的基础 Bean，将 `qwen` 策略切换为 Spring AI `OpenAiChatModel`。Chat 配置使用百炼 OpenAI-compatible endpoint，`base-url` 为 `https://dashscope.aliyuncs.com/compatible-mode`，由 Spring AI 1.1.2 默认补齐 `/v1/chat/completions`；DashScope Chat 自动配置明确关闭。删除不再使用的 `DashScopeChatModelStrategy`，保留前端 `modelId=qwen`、`OpenAiChatOptions`、structured parser、evidence 校验和 RAG 检索链路不变。
+
+### 验证与当前限制
+
+`mvn clean`、Chat 策略/Factory、`ReactiveChatGateway`、`ChatModelStrategy`、`GroundedTurnModule` 定向测试和 `mvn -DskipTests compile` 均通过。使用不含真实 Key 的临时配置启动 8081 端口时，Spring 上下文完成装配并监听端口；真实 DashScope 请求因占位凭据返回 401，未将其作为 Chat 功能结果。当前工具进程无法继承用户新 Key，因此真实 endpoint 抓取、structured raw JSON 和 10 次稳定性统计待使用有效本地环境变量重新启动后完成。本轮未重新加入任何代理配置，未修改 Embedding、Rerank、Milvus 或检索参数。

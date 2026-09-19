@@ -7,12 +7,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(name = "spring.ai.model.chat", havingValue = "dashscope")
+@ConditionalOnProperty(name = "spring.ai.model.chat", havingValue = "openai")
 public class QwenChatModelStrategy implements ChatModelStrategy {
 
     private final ChatClient chatClient;
 
-    public QwenChatModelStrategy(@Qualifier("dashScopeChatModel") ChatModel chatModel) {
+    public QwenChatModelStrategy(@Qualifier("openAiChatModel") ChatModel chatModel) {
         this.chatClient = ChatClient.builder(chatModel).build();
     }
 
