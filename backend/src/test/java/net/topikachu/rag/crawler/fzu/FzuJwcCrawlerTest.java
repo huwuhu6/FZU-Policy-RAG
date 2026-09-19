@@ -65,6 +65,46 @@ class FzuJwcCrawlerTest {
     }
 
     @Test
+    void discoversCmsAttachmentsOutsideBodyAndDeduplicatesUrls() {
+        Document page = Jsoup.parse("""
+                <div class="ny_box">
+                  <div class="TRS_Editor">
+                    <div class="articelMain">
+                      <h1>关于做好转专业工作的通知</h1>
+                      <p>正文内容</p>
+                    </div>
+                  </div>
+                  <div class="xl_main">
+                    <ul>
+                      <li><a href="/system/_content/download.jsp?wbfileid=101">
+                        福州大学本科生转专业管理实施办法.docx</a></li>
+                      <li><a href="/system/_content/download.jsp?wbfileid=102">
+                        XX学院转专业实施细则.pdf</a></li>
+                      <li><a href="/system/_content/download.jsp?wbfileid=103">
+                        福州大学本科生转专业审批表.doc</a></li>
+                      <li><a href="/system/_content/download.jsp?wbfileid=101">
+                        重复展示的同一附件.docx</a></li>
+                    </ul>
+                  </div>
+                  <a href="/info/xxxx.htm">相关通知</a>
+                </div>
+                """, "https://jwch.fzu.edu.cn/info/1036/14199.htm");
+        FzuJwcCrawler.ListItem item = new FzuJwcCrawler.ListItem(
+                "关于做好转专业工作的通知",
+                "https://jwch.fzu.edu.cn/info/1036/14199.htm",
+                null, FzuJwcCrawler.SourceSection.TEACHING_NOTICE, null);
+
+        FzuJwcCrawler.DetailPage detail = crawler.parseDetail(page, item);
+
+        assertEquals(2, detail.attachments().size());
+        assertEquals("福州大学本科生转专业管理实施办法.docx", detail.attachments().get(0).fileName());
+        assertEquals("https://jwch.fzu.edu.cn/system/_content/download.jsp?wbfileid=101",
+                detail.attachments().get(0).url());
+        assertEquals("XX学院转专业实施细则.pdf", detail.attachments().get(1).fileName());
+        assertEquals(1, detail.skippedAttachments());
+    }
+
+    @Test
     void relevanceAndAttachmentFiltersStaySimpleAndDeterministic() {
         assertTrue(FzuJwcCrawler.isRelevantTitle("关于本科生重修选课的通知"));
         assertFalse(FzuJwcCrawler.isRelevantTitle("本科生奖学金评定管理办法"));

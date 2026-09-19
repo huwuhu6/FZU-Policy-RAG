@@ -89,3 +89,33 @@ V1 仅覆盖福州大学教务处三个确定栏目和有限通知页数；不�
 当前 hash 去重以文件内容为主；如果相同二进制附件被多个不同来源页引用，后续来源 provenance 可能无法完整保留。当前尚无真实阻断 Failure Case，因此暂不增加来源关系模型。
 
 本轮没有进入 Version-aware Retrieval、Claim-Evidence Verification、定时采集、指定 URL API、前端 Crawler 按钮或其他下一阶段设计。
+
+## 2026-09-19｜修复福大 CMS 政策附件采集
+
+### 起因
+
+上一轮正常规模抓取访问 34 个列表页，得到 149 个 HTML 文档，但 PDF、DOC、DOCX 均为 0。该结果与福州大学教务处真实详情页包含正式政策附件的事实矛盾，说明问题不在 MinIO、ETL 或 Milvus 主链，而在站点附件发现。
+
+### 初始方案与根因
+
+原实现只在 `.articelMain` 内扫描 `a[href]`，再从 URL 最后路径段或 anchor 文本推断文件名并按扩展名判断。对真实页面检查发现，正文位于 `.ny_box` 下的 `.articelMain`，附件则位于同一 `.ny_box` 下的兄弟容器 `.xl_main > ul > li > a`；两者不在同一个正文节点内。福大 CMS 的附件链接统一使用 `/system/_content/download.jsp?urltype=news.DownloadAttachUrl&owner=...&wbfileid=...`，URL 本身没有 `.pdf`、`.doc` 或 `.docx` 扩展名，扩展名只出现在页面展示文件名中。因此原逻辑既没有遍历附件节点，也无法仅靠 download.jsp URL 识别文件类型。
+
+### 新方案
+
+保留 `.articelMain` 内普通链接兼容性，并在正文最近的 `.ny_box` 容器内额外发现 `a[href*='download.jsp']`。文件名优先取页面展示名称（anchor text，其次 title/download 属性），再回退到 URL 路径文件名；同一 `artifactUrl` 使用 URL 去重。PDF/DOC/DOCX 白名单和申请表、审批表、报名表、名单、模板等事务性附件黑名单保持不变。真实页面展示名称已包含扩展名，因此没有增加复杂的 `Content-Disposition` fallback；实际下载响应虽然也提供了 `Content-Disposition`，但本轮无需依赖它。
+
+### 真实验证
+
+- DOCX 详情页：`https://jwch.fzu.edu.cn/info/1036/14199.htm`，发现 `福州大学本科生转专业管理实施办法.docx`，artifact URL 为 `https://jwch.fzu.edu.cn/system/_content/download.jsp?urltype=news.DownloadAttachUrl&owner=1744984858&wbfileid=16716630`；同页的 `福州大学参军退伍复学后学生转专业审批表.doc` 被黑名单跳过。
+- PDF 详情页：`https://jwch.fzu.edu.cn/info/1036/14352.htm`，发现 `2025-2026学年各学院转专业实施细则.pdf`，artifact URL 为 `https://jwch.fzu.edu.cn/system/_content/download.jsp?urltype=news.DownloadAttachUrl&owner=1744984858&wbfileid=16732856`。
+- 两类附件均通过 `FzuJwcCrawler → writeArtifact → DocumentIngestionService → MinIO → ETL → Milvus` 完成：数据库状态为 `COMPLETED`，对应 `etl_job` 为 `SUCCESS`；DOCX 产生 3 个 Parent Block、21 个 Milvus child，PDF 产生 23 个 Parent Block、100 个 Milvus child。
+- MinIO 抽查确认 DOCX 对象大小 18,032 bytes、文件头为 ZIP `PK`，PDF 对象大小 1,503,627 bytes、文件头为 `%PDF`，没有把 HTML 错误页保存为附件。
+- Milvus metadata 抽查包含 `doc_uuid`、`file_name`、`source_url`、`parent_block_id`、`evidence_id` 等字段；RAG 回归问题命中 PDF 附件 3 个 evidence source，并返回附件页码引用。
+
+### 正常规模增量采集结果
+
+修复后在不清空现有数据库的情况下再次执行默认规模 crawl：扫描 34 页，发现 626 条详情，相关 140 条，提交 22 个新 artifact，重复 150 个，跳过 520 个，失败 0；artifact 分类为 HTML 140、PDF 18、DOC 5、DOCX 9。已有 HTML 和重复附件由现有内容 hash 去重逻辑处理。
+
+### 最终取舍与限制
+
+本轮只做福州大学 CMS 当前真实 DOM 的最小兼容，没有引入通用 CMS 适配层、复杂 Content-Type 识别、WebMagic 或新的下载库，也没有调整 Embedding、Rerank、RRF、Chunk、Milvus schema 或检索算法。当前仍不支持 XLS/XLSX、ZIP/RAR、PPT/PPTX、图片和 OCR；扫描型 PDF 在 OCR 关闭时仍可能失败。相同二进制附件被多个来源页引用时，现有内容 hash 去重的 provenance 限制仍未处理。

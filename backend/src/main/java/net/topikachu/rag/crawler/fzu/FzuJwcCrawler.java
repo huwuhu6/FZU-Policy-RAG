@@ -3,7 +3,6 @@ package net.topikachu.rag.crawler.fzu;
 import net.topikachu.rag.business.document.vo.DocumentSourceMetadata;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +19,11 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -153,19 +154,29 @@ public class FzuJwcCrawler {
         }
         LocalDate publishDate = parseDate(page.text().replace('\u00a0', ' '));
         String body = normalizedBody(main, title);
-        List<Attachment> attachments = new ArrayList<>();
+        Element attachmentContainer = main.closest(".ny_box");
+        if (attachmentContainer == null) {
+            attachmentContainer = main;
+        }
+        Map<String, Attachment> attachmentsByUrl = new LinkedHashMap<>();
         int skippedAttachments = 0;
-        for (Element link : main.select("a[href]")) {
+        List<Element> attachmentLinks = new ArrayList<>(main.select("a[href]"));
+        for (Element link : attachmentContainer.select("a[href*='download.jsp']")) {
+            if (!attachmentLinks.contains(link)) {
+                attachmentLinks.add(link);
+            }
+        }
+        for (Element link : attachmentLinks) {
             String url = link.absUrl("href");
             if (url.isBlank()) {
                 continue;
             }
-            String fileName = fileNameFromUrl(url, link.text());
+            String fileName = resolveAttachmentFileName(link, url);
             if (isSupportedAttachment(fileName)) {
                 if (isBlacklistedAttachment(fileName)) {
                     skippedAttachments++;
                 } else {
-                    attachments.add(new Attachment(fileName, url));
+                    attachmentsByUrl.putIfAbsent(url, new Attachment(fileName, url));
                 }
             } else if (hasFileExtension(fileName)) {
                 skippedAttachments++;
@@ -173,7 +184,7 @@ public class FzuJwcCrawler {
         }
         DocumentSourceMetadata metadata = new DocumentSourceMetadata(
                 item.url(), null, item.section().name(), publishDate, item.handbookYear());
-        return new DetailPage(title, item.url(), body, metadata, attachments, skippedAttachments);
+        return new DetailPage(title, item.url(), body, metadata, List.copyOf(attachmentsByUrl.values()), skippedAttachments);
     }
 
     public static boolean isRelevantTitle(String title) {
@@ -282,6 +293,24 @@ public class FzuJwcCrawler {
         } catch (RuntimeException ignored) {
             return null;
         }
+    }
+
+    private String resolveAttachmentFileName(Element link, String url) {
+        String pageFileName = firstFileNameCandidate(
+                link.text(), link.attr("title"), link.attr("download"));
+        if (!pageFileName.isBlank()) {
+            return pageFileName;
+        }
+        return fileNameFromUrl(url, link.text());
+    }
+
+    private String firstFileNameCandidate(String... candidates) {
+        for (String candidate : candidates) {
+            if (candidate != null && hasFileExtension(candidate.trim())) {
+                return candidate.trim();
+            }
+        }
+        return "";
     }
 
     private String fileNameFromUrl(String url, String anchorText) {
