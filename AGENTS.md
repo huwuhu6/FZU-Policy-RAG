@@ -69,6 +69,13 @@ Jsoup crawler 属于知识更新基础能力，不应为了包装成核心 AI �
 
 Version/Validity-aware Retrieval 和 Claim-Evidence Verification 是当前最主要的业务增强方向，但必须建立在 baseline 已经跑通和真实 Failure Case 之上。
 
+## 开发记录
+
+- 完成对项目行为、架构、业务能力或测评有意义的工作单元后，检查是否需要更新 `docs/development-log.md`。
+- 开发记录使用中文，记录设计背景、方案取舍、真实问题、验证结果和当前限制，不记录普通语法错误、编译错误或格式化过程。
+- 真实踩坑必须记录方案演进和验证结果；重要测评必须记录背景、baseline、数据、指标、结果和结论。
+- 不允许虚构失败、结果、指标或历史过程；不要求每个 commit 都增加一条开发记录。
+
 ## Git 规则
 
 ### Commit Message

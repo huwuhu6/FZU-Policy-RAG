@@ -13,3 +13,5 @@
 - 不添加数据库 Foreign Key，避免改变当前应用层删除、重试和补偿语义。
 
 后续 schema 演进应新增编号 SQL 文件，不直接覆盖该 baseline。
+
+执行顺序：先执行 `001_baseline_schema.sql`，再执行 `002_fzu_crawler_metadata.sql`。

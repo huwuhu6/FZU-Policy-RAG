@@ -38,12 +38,29 @@ public class DocumentChunkMetadataBuilder {
         copyIfPresent(currentChunkMetadata, metadata, "evidence_id");
         copyIfPresent(currentChunkMetadata, metadata, "chunk_schema_version");
         copyIfPresent(currentChunkMetadata, metadata, "source_location");
+        copyIfTextPresent(storedDocument == null ? null : storedDocument.getSourceUrl(), metadata, "source_url");
+        copyIfTextPresent(storedDocument == null ? null : storedDocument.getSourceSection(), metadata, "source_section");
+        copyIfPresent(storedDocument == null || storedDocument.getPublishDate() == null
+                ? null : storedDocument.getPublishDate().toString(), metadata, "publish_date");
+        copyIfPresent(storedDocument == null ? null : storedDocument.getHandbookYear(), metadata, "handbook_year");
         return metadata;
     }
 
     private void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
         if (source != null && source.get(key) != null) {
             target.put(key, source.get(key));
+        }
+    }
+
+    private void copyIfPresent(Object value, Map<String, Object> target, String key) {
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
+    private void copyIfTextPresent(String value, Map<String, Object> target, String key) {
+        if (value != null && !value.isBlank()) {
+            target.put(key, value);
         }
     }
 }

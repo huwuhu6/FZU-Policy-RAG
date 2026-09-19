@@ -65,7 +65,8 @@ CLAUDE.md
 .codex/
 .codex-tmp/
 .playwright-mcp/
-docs/
+/docs/*
+!/docs/development-log.md
 CONTEXT.md
 start-all.bat
 replace_grid.js

@@ -21,6 +21,21 @@ public class Document extends BaseEntity {
     @TableField("FILE_HASH")
     private String fileHash;
 
+    @TableField("SOURCE_URL")
+    private String sourceUrl;
+
+    @TableField("ARTIFACT_URL")
+    private String artifactUrl;
+
+    @TableField("SOURCE_SECTION")
+    private String sourceSection;
+
+    @TableField("PUBLISH_DATE")
+    private java.time.LocalDate publishDate;
+
+    @TableField("HANDBOOK_YEAR")
+    private Integer handbookYear;
+
     /**
      * 标签列表 (JSON)
      * DB: JSON Array String
