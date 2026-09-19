@@ -73,16 +73,6 @@ public class DocumentIngestionService {
         this.objectStorageService = objectStorageService;
     }
 
-    void configureUploadProperties(String inputDirectory, long maxSizeBytes, String allowedExt) {
-        if (StringUtils.hasText(inputDirectory)) {
-            this.inputDirectory = inputDirectory;
-        }
-        this.maxSizeBytes = maxSizeBytes;
-        if (StringUtils.hasText(allowedExt)) {
-            this.allowedExt = allowedExt;
-        }
-    }
-
     public Mono<UploadResult> ingest(Path path,
                                      String fileName,
                                      String contentType,

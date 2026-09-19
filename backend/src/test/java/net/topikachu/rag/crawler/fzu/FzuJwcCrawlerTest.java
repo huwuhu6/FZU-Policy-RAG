@@ -67,7 +67,8 @@ class FzuJwcCrawlerTest {
     @Test
     void relevanceAndAttachmentFiltersStaySimpleAndDeterministic() {
         assertTrue(FzuJwcCrawler.isRelevantTitle("关于本科生重修选课的通知"));
-        assertTrue(FzuJwcCrawler.isRelevantTitle("本科生奖学金评定管理办法"));
+        assertFalse(FzuJwcCrawler.isRelevantTitle("本科生奖学金评定管理办法"));
+        assertFalse(FzuJwcCrawler.isRelevantTitle("关于公布修读辅修专业学生名单的公示"));
         assertFalse(FzuJwcCrawler.isRelevantTitle("关于召开工作会议的通知"));
         assertTrue(FzuJwcCrawler.isSupportedAttachment("policy.DOCX"));
         assertFalse(FzuJwcCrawler.isSupportedAttachment("名单.xlsx"));

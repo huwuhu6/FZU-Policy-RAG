@@ -44,6 +44,7 @@ class DocumentServiceImplTest {
     private EtlJobService etlJobService;
     private KnowledgeParentBlockService parentBlockService;
     private PlatformTransactionManager transactionManager;
+    private DocumentIngestionService ingestionService;
     private DocumentUploadHandler uploadHandler;
     private AclRefreshManager aclRefreshManager;
     private DocumentServiceImpl service;
@@ -59,12 +60,13 @@ class DocumentServiceImplTest {
         transactionManager = mock(PlatformTransactionManager.class);
         aclRefreshManager = mock(AclRefreshManager.class);
         accessPolicy = new KnowledgeAccessPolicy();
-        uploadHandler = new DocumentUploadHandler(
+        ingestionService = new DocumentIngestionService(
                 documentMapper,
                 tracingSupport,
                 etlJobService,
                 transactionManager,
                 objectStorageService);
+        uploadHandler = new DocumentUploadHandler(ingestionService);
 
         service = new DocumentServiceImpl(
                 documentMapper,
@@ -79,8 +81,9 @@ class DocumentServiceImplTest {
 
         ReflectionTestUtils.setField(service, "inputDirectory", tempDir.toString());
         ReflectionTestUtils.setField(uploadHandler, "inputDirectory", tempDir.toString());
-        ReflectionTestUtils.setField(uploadHandler, "allowedExt", "pdf,doc,docx,txt,md");
-        ReflectionTestUtils.setField(uploadHandler, "maxSizeBytes", 52428800L);
+        ReflectionTestUtils.setField(ingestionService, "inputDirectory", tempDir.toString());
+        ReflectionTestUtils.setField(ingestionService, "allowedExt", "pdf,doc,docx,txt,md");
+        ReflectionTestUtils.setField(ingestionService, "maxSizeBytes", 52428800L);
 
         doAnswer(inv -> inv.getArgument(2)).when(tracingSupport)
                 .traceMono(anyString(), anyMap(), any());
@@ -249,7 +252,7 @@ class DocumentServiceImplTest {
 
     @Test
     void uploadRejectsOversizedFile() throws Exception {
-        ReflectionTestUtils.setField(uploadHandler, "maxSizeBytes", 10L);
+        ReflectionTestUtils.setField(ingestionService, "maxSizeBytes", 10L);
 
         Path sourceFile = tempDir.resolve("large.pdf");
         Files.write(sourceFile, "this file is way too large for the tiny limit".getBytes());
@@ -358,16 +361,18 @@ class DocumentServiceImplTest {
                 .thenReturn(Mono.error(new RuntimeException("storage down")));
         when(failOss.deleteObject(anyString())).thenReturn(Mono.empty());
 
-        DocumentUploadHandler failUploadHandler = new DocumentUploadHandler(
+        DocumentIngestionService failIngestionService = new DocumentIngestionService(
                 documentMapper, tracingSupport, failEtlJobService, transactionManager, failOss);
+        DocumentUploadHandler failUploadHandler = new DocumentUploadHandler(failIngestionService);
         DocumentServiceImpl failService = new DocumentServiceImpl(
                 documentMapper, mock(MilvusWriteGateway.class), mock(KnowledgeAclRefreshTaskMapper.class),
                 failEtlJobService, parentBlockService, failOss,
                 failUploadHandler, new DocumentPermissionManager(accessPolicy), mock(AclRefreshManager.class));
         ReflectionTestUtils.setField(failService, "inputDirectory", tempDir.toString());
         ReflectionTestUtils.setField(failUploadHandler, "inputDirectory", tempDir.toString());
-        ReflectionTestUtils.setField(failUploadHandler, "allowedExt", "pdf,doc,docx,txt,md");
-        ReflectionTestUtils.setField(failUploadHandler, "maxSizeBytes", 52428800L);
+        ReflectionTestUtils.setField(failIngestionService, "inputDirectory", tempDir.toString());
+        ReflectionTestUtils.setField(failIngestionService, "allowedExt", "pdf,doc,docx,txt,md");
+        ReflectionTestUtils.setField(failIngestionService, "maxSizeBytes", 52428800L);
 
         Path sourceFile = tempDir.resolve("put-fail.pdf");
         Files.write(sourceFile, "put fails content".getBytes());

@@ -30,28 +30,12 @@ public class DocumentUploadHandler {
 
     private final DocumentIngestionService ingestionService;
 
-    @Value("${rag.upload.max-size-bytes:52428800}")
-    private long maxSizeBytes;
-
     @Value("${input.directory:${java.io.tmpdir}/fzu-policy-rag-input}")
     private String inputDirectory;
-
-    @Value("${rag.upload.allowed-ext:pdf,doc,docx,txt,md}")
-    private String allowedExt;
 
     @Autowired
     public DocumentUploadHandler(DocumentIngestionService ingestionService) {
         this.ingestionService = ingestionService;
-    }
-
-    /** Kept for existing unit tests and source compatibility with the old handler. */
-    public DocumentUploadHandler(net.topikachu.rag.business.document.mapper.DocumentMapper documentMapper,
-                                 net.topikachu.rag.observability.TracingSupport tracingSupport,
-                                 net.topikachu.rag.business.document.service.EtlJobService etlJobService,
-                                 org.springframework.transaction.PlatformTransactionManager transactionManager,
-                                 net.topikachu.rag.service.storage.ObjectStorageService objectStorageService) {
-        this(new DocumentIngestionService(documentMapper, tracingSupport, etlJobService,
-                transactionManager, objectStorageService));
     }
 
     public Mono<UploadResult> upload(FilePart filePart,
@@ -128,7 +112,6 @@ public class DocumentUploadHandler {
                                       String userId,
                                       List<String> tags,
                                       DocumentSourceMetadata metadata) {
-        ingestionService.configureUploadProperties(inputDirectory, maxSizeBytes, allowedExt);
         return ingestionService.ingest(path, fileName, contentType, overwrite, userId, tags, metadata);
     }
 

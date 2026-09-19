@@ -58,3 +58,34 @@ V1 仅覆盖福州大学教务处三个确定栏目和有限通知页数；不�
 ### 后续
 
 在 baseline 和真实采集数据稳定后，根据真实 Failure Case 决定是否进入 Version / Validity-aware Retrieval 或 Claim-Evidence Verification。
+
+## 2026-09-19｜Crawler V1真实 ingestion / RAG 闭环收尾
+
+### 本轮目标
+
+将 Crawler V1 从 discovery 验证推进到真实的 `Crawler → MinIO → ETL → Milvus → RAG` 闭环，并只修正本轮真实验证中发现的小问题，不改变现有检索主链。
+
+### 已知问题修正
+
+- `FzuCrawlService` 的 `failed` 改为包含 discovery 阶段失败数和 artifact 提交失败数；`failures` 仍保留具体错误文本。
+- 奖学金从 Crawler V1 关键词范围移除，当前范围聚焦本科教学、学籍、培养、课程、成绩、学分和毕业政策。
+- 清理 `DocumentUploadHandler` 为旧测试保留的兼容构造和 `configureUploadProperties` 运行时重配；HTTP 上传与 Crawler 继续注入同一个 `DocumentIngestionService`，上传限制仍由 Spring 配置注入到 ingestion service。
+- 真实正常规模抽查发现标题包含“名单”的公告会被“选课/辅修/毕业”等关键词误收，新增最小标题黑名单并补回归测试；没有引入 LLM 分类或 topic/role 抽象。
+
+### 环境与真实验证
+
+之前的 MinIO 凭据不匹配和 JVM native memory 问题在本轮通过核对现有容器配置、补齐本地进程环境变量和释放资源后未再次阻断验证；没有修改业务实现或提交本机专用内存配置。复用已有 `milvus-standalone`、`milvus-etcd` 和 `milvus-minio`，MinIO 实际 endpoint 为本机 `9000`，bucket 为 `fzu-policy-documents`。本地 MySQL、Redis、Milvus、MinIO 均可连接，DashScope embedding 和 qwen-flash 均实际调用成功。
+
+小规模采集使用三个 crawler 页数上限均为 1，实际结果为：扫描页 5，发现 100，相关 32，提交 32，重复 0，跳过 68，失败 0；artifact 为 HTML 32、PDF 0、DOC 0、DOCX 0。32 个文档均写入 MinIO、`knowledge_document` 和 `etl_job`，最终为 `COMPLETED` / `SUCCESS`，Parent Block 32 个。
+
+随后恢复默认页数进行正常规模幂等采集，结果为：扫描页 34，发现 626，相关 149，提交 117，重复 32，跳过 485，失败 0；artifact 为 HTML 149、PDF 0、DOC 0、DOCX 0。后台 ETL 最终为 149 个 `COMPLETED` 文档、149 个 `SUCCESS` job、149 个 Parent Block。HybridVectorWriter 日志确认 child hybrid vector 写入 Milvus；应用启动时确认目标 collection 已包含 `sparse_vector`，embedding 维度为 1024。
+
+真实 RAG 回归使用转专业政策和课程替代/学分认定政策各提问一次。两次请求都经过现有 Hybrid/RRF、Rerank、Parent Expansion 和 DashScope Chat 主链，返回非空 sources、真实 `source_url`、有效 `evidence_id`，回答内容与抓取政策正文一致。MinIO 抽查确认 crawler HTML Markdown 对象真实存在，临时 crawler 文件已清理。
+
+### 当前限制
+
+当前正常规模测试数据中仍保留本轮过滤规则修正前已写入的少量“名单”公告；修正后的规则会阻止后续同类标题进入，未对本地数据库和 Milvus 做猜测性批量删除。Crawler V1 暂不覆盖附件 PDF/DOC/DOCX 的本轮真实样本，后续需要真实页面出现对应高价值附件时再验证。
+
+当前 hash 去重以文件内容为主；如果相同二进制附件被多个不同来源页引用，后续来源 provenance 可能无法完整保留。当前尚无真实阻断 Failure Case，因此暂不增加来源关系模型。
+
+本轮没有进入 Version-aware Retrieval、Claim-Evidence Verification、定时采集、指定 URL API、前端 Crawler 按钮或其他下一阶段设计。

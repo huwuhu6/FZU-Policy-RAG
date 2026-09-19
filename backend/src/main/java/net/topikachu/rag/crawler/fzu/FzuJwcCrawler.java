@@ -37,9 +37,10 @@ public class FzuJwcCrawler {
     private static final List<String> RELEVANT_KEYWORDS = List.of(
             "转专业", "培养方案", "培养计划", "课程替代", "学籍", "休学", "复学", "退学", "转学",
             "选课", "退选", "补选", "重修", "免修", "课程考核", "成绩", "绩点", "缓考", "补考",
-            "辅修", "学分认定", "创新创业学分", "竞赛认定", "毕业", "学位", "毕业设计", "奖学金");
+            "辅修", "学分认定", "创新创业学分", "竞赛认定", "毕业", "学位", "毕业设计");
     private static final List<String> ATTACHMENT_BLACKLIST = List.of(
             "申请表", "审批表", "报名表", "汇总表", "名单", "模板", "回执", "统计表", "申报书", "承诺书");
+    private static final List<String> TITLE_BLACKLIST = List.of("名单");
 
     private final String baseUrl;
     private final int noticeMaxPages;
@@ -180,6 +181,9 @@ public class FzuJwcCrawler {
             return false;
         }
         String normalized = title.replaceAll("\\s+", "");
+        if (TITLE_BLACKLIST.stream().anyMatch(normalized::contains)) {
+            return false;
+        }
         return RELEVANT_KEYWORDS.stream().anyMatch(normalized::contains);
     }
 

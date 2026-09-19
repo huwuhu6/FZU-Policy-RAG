@@ -126,6 +126,7 @@ public class FzuCrawlService {
             this.relevant = discovery.relevant();
             this.skipped = discovery.skipped();
             this.userId = userId;
+            this.failed = discovery.failures().size();
         }
 
         private FzuCrawlSummary withUserFailures() {
