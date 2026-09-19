@@ -92,6 +92,7 @@
         class="chat-thread"
         ref="chatThreadRef"
         @scroll="handleThreadScroll"
+        @wheel="handleThreadWheel"
       >
             <div v-for="(msg, index) in messages" :key="index" :class="['message-row', msg.role]">
                 <div class="message-bubble">
@@ -419,6 +420,12 @@ const handleThreadScroll = () => {
 
     userScrolledUp.value =
         container.scrollHeight - container.scrollTop - container.clientHeight > 80;
+};
+
+const handleThreadWheel = (event: WheelEvent) => {
+    if (event.deltaY < 0) {
+        userScrolledUp.value = true;
+    }
 };
 
 const scrollBottom = (force = false) => {
@@ -1145,7 +1152,7 @@ const logout = () => {
   display: flex;
   flex-direction: column;
   align-items: center; 
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   background: transparent;
   border: none;
   box-shadow: none;
