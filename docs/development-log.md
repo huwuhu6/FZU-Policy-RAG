@@ -146,3 +146,23 @@ V1 仅覆盖福州大学教务处三个确定栏目和有限通知页数；不�
 ### 测试与限制
 
 新增/更新的定向测试共 19 项，全部通过；`mvn clean` 和 `mvn -DskipTests compile` 均通过。两个 FAILED 文档分别对应既有 OCR disabled 和 ETL timeout 数据，不在本轮 backfill 的 `COMPLETED` 选择范围内。全量测试中的外部 Milvus 连接问题和既有 architecture guard 仍按 upstream/环境问题处理，没有为此修改无关业务代码。
+
+## 2026-09-19｜统一 DashScope 聊天模型标识并诊断 Embedding 网络抖动
+
+### 起因与根因
+
+前端聊天页仍将“Qwen 2.5”映射为 `modelId=ollama`，而当前后端主线已经使用 DashScope `qwen-flash`，导致前后端模型策略不一致。聊天失败日志中的 `DashScope embedding request failed: Connection reset` 发生在查询向量生成阶段；检索层将 Embedding 和 Milvus 异常统一包装为“知识库检索失败”，因此提示文本不能直接证明 Milvus 故障。
+
+### 修改
+
+- 用户聊天页和评测筛选页均只保留 `Qwen Flash`，前端请求统一发送 `modelId=qwen`。
+- `modelNameFor` 对 `qwen` 和历史 `dashscope` 记录显示为 `Qwen Flash`，移除 Ollama、DeepSeek、Gemini 的模型选项和旧映射。
+- `application.example.properties` 改为 DashScope Chat `qwen-flash`，保留 `qwen3.7-text-embedding-flash`、1024 维 Embedding 和 `qwen3.7-text-rerank` 配置。
+- 前端重新构建，并同步更新 Spring Boot tracked static bundle；旧 bundle 中不再存在 `ollama` 或 `Qwen 2.5`。
+- `application-ollama-openai.example.properties` 暂未删除，因为离线 `AblationStudyRunner` 和 `RagasDataExporter` 仍显式激活 `ollama-openai` profile；它不参与当前默认 DashScope 主链。
+
+### 网络诊断与真实回归
+
+本机到 `dashscope.aliyuncs.com:443` 的 TCP 连接成功；环境变量和 Windows 系统代理均配置为本地代理。PowerShell/curl 的 Schannel smoke 报 `SEC_E_NO_CREDENTIALS`，没有得到 HTTP 响应。使用 Java HTTPS 客户端分别直连和显式使用本地代理请求同一 Embedding 接口，两种方式均返回 HTTP 200，模型、1024 维、`dense&sparse` 和 `query` 参数均成功。结合此前 Java WebClient 的单次 `Connection reset`，当前证据支持临时网络/TLS/代理波动，不支持增加固定代理或修改 Java HTTP 客户端。
+
+使用临时 18080 端口启动后端进行真实回归，前端请求语义对应的 payload 使用 `modelId=qwen`。`你是？` 请求成功返回无来源回答；“我是2024级本科生，现在申请转专业，应该按照哪一版规定？”请求成功返回非空 evidence sources 和政策回答，未出现 Retrieval、Embedding 或 reset 错误。没有修改 Java、Embedding、Rerank、Milvus 或检索算法。

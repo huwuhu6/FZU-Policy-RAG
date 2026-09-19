@@ -8,9 +8,7 @@
           {{ t("evaluation.runAuto") }}
         </el-button>
         <el-select v-model="filterModel" size="small" :placeholder="t('evaluation.filterModel')" style="width: 140px;" clearable>
-          <el-option label="Qwen 2.5" value="ollama" />
-          <el-option label="DeepSeek" value="deepseek" />
-          <el-option label="Gemini" value="gemini" />
+          <el-option label="Qwen Flash" value="qwen" />
         </el-select>
         <el-date-picker
           v-model="filterDateRange"

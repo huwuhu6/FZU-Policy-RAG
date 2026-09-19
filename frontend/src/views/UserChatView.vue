@@ -236,9 +236,7 @@
                              />
                          </el-select>
                          <el-select v-model="selectedModel" size="default" class="model-select">
-                             <el-option label="Qwen 2.5" value="ollama" />
-                             <el-option label="DeepSeek" value="deepseek" />
-                             <el-option label="Gemini" value="gemini" />
+                              <el-option label="Qwen Flash" value="qwen" />
                          </el-select>
                          <el-button type="primary" circle class="send-btn" @click="startChat" :loading="loading" :disabled="!question.trim()">
                             <el-icon><Position /></el-icon>
@@ -280,7 +278,7 @@ const conversationId = ref(`conv-${Math.random().toString(36).slice(2, 8)}`);
 const question = ref("");
 const isSidebarCollapsed = ref(false);
 const selectedSpaces = ref<string[]>([]);
-const selectedModel = ref("ollama");
+const selectedModel = ref("qwen");
 const selectedMode = ref<"rag" | "agent">("rag");
 const modeOptions = computed(() => [
   { value: "rag", label: t("chat.modeFast") },
@@ -590,9 +588,8 @@ const formatSessionTime = (value: string) => {
 
 const modelNameFor = (modelId: string) => {
   const modelNameMap: Record<string, string> = {
-    ollama: "Qwen 2.5",
-    deepseek: "DeepSeek",
-    gemini: "Gemini",
+    qwen: "Qwen Flash",
+    dashscope: "Qwen Flash",
   };
   return modelNameMap[modelId] || modelId;
 };
@@ -734,7 +731,7 @@ const submitChat = async (userInput: string, options?: { clearInput?: boolean; f
     setFollowupPending(options.followupMsgId, true);
   }
 
-  // 后端 ollama 默认部署 Qwen 2.5 模型，后续换模型时需同步更新此映射
+  // 当前主线使用 DashScope qwen-flash，modelId 与后端 QwenChatModelStrategy 保持一致。
   const currentModelName = modelNameFor(selectedModel.value);
   const msgId = `msg-${Math.random().toString(36).slice(2, 10)}`;
   activeMsgId.value = msgId;
