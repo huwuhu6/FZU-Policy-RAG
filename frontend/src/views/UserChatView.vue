@@ -87,7 +87,12 @@
       </div>
 
       <!-- Active State: Thread -->
-      <div v-show="messages.length > 0" class="chat-thread" ref="chatThreadRef">
+      <div
+        v-show="messages.length > 0"
+        class="chat-thread"
+        ref="chatThreadRef"
+        @scroll="handleThreadScroll"
+      >
             <div v-for="(msg, index) in messages" :key="index" :class="['message-row', msg.role]">
                 <div class="message-bubble">
                     
@@ -353,6 +358,8 @@ type ChatAction =
   | { type: "RESET_CONVERSATION" };
 
 const messages = ref<ChatMessage[]>([]);
+const chatThreadRef = ref<HTMLElement | null>(null);
+const userScrolledUp = ref(false);
 const loading = ref(false);
 const spaceOptions = ref<string[]>([]);
 const activeMsgId = ref<string | null>(null);
@@ -406,10 +413,21 @@ const adjustTextareaHeight = (e: Event) => {
     target.style.height = (target.scrollHeight) + 'px';
 };
 
-const scrollBottom = () => {
+const handleThreadScroll = () => {
+    const container = chatThreadRef.value;
+    if (!container) return;
+
+    userScrolledUp.value =
+        container.scrollHeight - container.scrollTop - container.clientHeight > 80;
+};
+
+const scrollBottom = (force = false) => {
     nextTick(() => {
-        const container = document.querySelector('.chat-thread');
-        if (container) container.scrollTop = container.scrollHeight;
+        const container = chatThreadRef.value;
+        if (!container || (!force && userScrolledUp.value)) return;
+
+        container.scrollTop = container.scrollHeight;
+        userScrolledUp.value = false;
     });
 };
 
@@ -524,7 +542,7 @@ const restoreSession = async (sessionConversationId: string) => {
     if (lastAssistant) {
       selectedMode.value = lastAssistant.mode;
     }
-    scrollBottom();
+    scrollBottom(true);
   } catch (e) {
     console.error(e);
     ElMessage.error(t("chat.historyRestoreFailed"));
@@ -738,10 +756,10 @@ const submitChat = async (userInput: string, options?: { clearInput?: boolean; f
   
   // Add User Message
   messages.value.push({ id: `${msgId}-user`, role: 'user', mode: selectedMode.value, content: trimmedInput, status: "done" });
-  scrollBottom();
+  scrollBottom(true);
   
   dispatch({ type: "START_REQUEST", payload: { msgId, mode: selectedMode.value, modelName: currentModelName } });
-  scrollBottom();
+  scrollBottom(true);
   
   loading.value = true;
   const controller = new AbortController();
