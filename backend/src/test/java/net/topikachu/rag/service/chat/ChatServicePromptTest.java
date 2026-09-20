@@ -42,6 +42,11 @@ class ChatServicePromptTest {
 
         assertTrue(prompt.contains("绝不能在用户可见的 directReply 中提及"));
         assertTrue(prompt.contains("不得提及路由器、分类器、模型"));
+        assertTrue(prompt.contains("我不想问这个了"));
+        assertTrue(prompt.contains("礼貌收尾"));
+        assertTrue(prompt.contains("帮我同学问一个东西"));
+        assertTrue(prompt.contains("严禁判定为 retrieve"));
+        assertTrue(prompt.contains("严禁把前序用户的身份属性强加给新主体"));
     }
 
     private int countOccurrences(String text, String target) {

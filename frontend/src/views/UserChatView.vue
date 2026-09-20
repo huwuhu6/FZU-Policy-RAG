@@ -449,14 +449,18 @@ const scrollBottom = (force = false) => {
 
 // 格式化溯源引用标签：PDF 显示"文件名 · 第N页"，DOCX/MD 显示"文件名 · 面包屑路径"
 const formatSourceReference = (source: any) => {
-  const docUuid = source.doc_uuid || source.docUuid;
-  const title = docUuid ? (source.file_name || source.fileName || source.source || t("chat.document")) : t("chat.unknownSource");
+  const title = sourceDisplayTitle(source);
   const page = source.page_number ?? source.pageNumber;
   const numericPage = normalizePageReference(page);
   if (numericPage) {
     return t("chat.sourceReferenceWithPage", { title, page: numericPage });
   }
-  const location = source.location || source.source_location || (isLocationText(page) ? String(page) : "");
+  const location = cleanSourceLocation(
+    source.location || source.source_location || (isLocationText(page) ? String(page) : "")
+  );
+  if (location && sameSourceText(location, title)) {
+    return t("chat.sourceReferenceWithoutPage", { title });
+  }
   if (location) {
     if (isSegmentLocation(location)) {
       return t("chat.sourceReferenceWithSegment", { title, segment: location });
@@ -647,16 +651,44 @@ const normalizePageReference = (page: unknown): string | null => {
 
 const isLocationText = (value: unknown) => typeof value === "string" && value.trim().length > 0;
 
+const sourceDisplayTitle = (source: any) => String(
+  source.file_name ||
+  source.fileName ||
+  source.docUuid ||
+  source.doc_uuid ||
+  source.source ||
+  t("chat.document")
+).trim();
+
+const sameSourceText = (left: string, right: string) =>
+  left.trim().toLocaleLowerCase() === right.trim().toLocaleLowerCase();
+
+const cleanSourceLocation = (value: unknown) => {
+  if (!isLocationText(value)) return "";
+  const parts = String(value)
+    .split(">")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const collapsed: string[] = [];
+  parts.forEach((part) => {
+    if (collapsed.length === 0 || !sameSourceText(collapsed[collapsed.length - 1], part)) {
+      collapsed.push(part);
+    }
+  });
+  return collapsed.join(" > ");
+};
+
 const dedupeSources = (rawSources: SourceMeta[]) => {
   const uniqueSources: SourceMeta[] = [];
-  const seenFiles = new Set<string>();
+  const seenDisplayKeys = new Set<string>();
 
   rawSources.forEach((s) => {
-    const docUuid = String(s.doc_uuid || s.docUuid || s.file_name || s.fileName || s.source || "Unknown");
-    const page = String(s.page_number ?? s.pageNumber ?? "");
-    const key = `${docUuid}|${page}`;
-    if (!seenFiles.has(key)) {
-      seenFiles.add(key);
+    const title = sourceDisplayTitle(s);
+    const page = normalizePageReference(s.page_number ?? s.pageNumber);
+    const position = page || cleanSourceLocation(s.location || s.source_location || "");
+    const key = `${title.trim()}||${position.trim()}`;
+    if (!seenDisplayKeys.has(key)) {
+      seenDisplayKeys.add(key);
       uniqueSources.push(s);
     }
   });

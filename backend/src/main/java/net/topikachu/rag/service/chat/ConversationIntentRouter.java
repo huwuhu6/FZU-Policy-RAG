@@ -23,6 +23,12 @@ public class ConversationIntentRouter {
             "同学你好！我是福州大学教务问答助手，可以向我咨询选课、转专业、缓考、推免或培养方案等相关事宜。";
     static final String CLARIFY_REPLY =
             "你想问的是哪一部分？可以把具体政策、课程或问题再描述一下。";
+    static final String TERMINATION_REPLY =
+            "好的，如果后续有其他教务、转专业或选课问题，随时可以再问我。";
+
+    private static final List<String> TERMINATION_MARKERS = List.of(
+            "我不想问这个了", "我不想问了", "不想问了", "先不问了",
+            "不问了", "算了", "不用了", "先这样", "再见", "拜拜");
 
     private final ChatModelStrategyFactory strategyFactory;
     private final ReactiveChatGateway reactiveChatGateway;
@@ -44,14 +50,27 @@ public class ConversationIntentRouter {
         Map<String, Object> params = Map.of(
                 "question", normalizedInput,
                 "history", renderHistory(history));
-        Mono<ConversationRouteResult> routed = Mono.defer(() ->
-                reactiveChatGateway.callBufferedConversationRoute(
-                        strategyFactory.getStrategy(modelId).getChatClient(),
-                        SourcedAnswerPrompts.conversationRoutePrompt(),
-                        params,
-                        history,
-                        normalizedInput,
-                        context == null ? null : context.conversationId()));
+        Mono<ConversationRouteResult> routed;
+        if (isTerminationIntent(normalizedInput)) {
+            routed = Mono.just(new ConversationRouteResult(
+                    ConversationRouteResult.Route.SMALLTALK,
+                    TERMINATION_REPLY,
+                    ""));
+        } else if (isPlaceholderInput(normalizedInput)) {
+            routed = Mono.just(new ConversationRouteResult(
+                    ConversationRouteResult.Route.CLARIFY,
+                    placeholderReply(normalizedInput),
+                    ""));
+        } else {
+            routed = Mono.defer(() ->
+                    reactiveChatGateway.callBufferedConversationRoute(
+                            strategyFactory.getStrategy(modelId).getChatClient(),
+                            SourcedAnswerPrompts.conversationRoutePrompt(),
+                            params,
+                            history,
+                            normalizedInput,
+                            context == null ? null : context.conversationId()));
+        }
 
         return tracingSupport.traceMono("rag.semantic_route",
                         context == null ? Map.of() : context.traceTags(), routed)
@@ -66,9 +85,12 @@ public class ConversationIntentRouter {
         String searchTargetQuery = result.searchTargetQuery() == null
                 ? ""
                 : result.searchTargetQuery().trim();
-        if (result.route() == ConversationRouteResult.Route.SMALLTALK
-                && (directReply.isBlank() || containsInternalRole(directReply))) {
-            directReply = SMALLTALK_FALLBACK_REPLY;
+        if (result.route() == ConversationRouteResult.Route.SMALLTALK) {
+            if (isTerminationIntent(fallbackQuery)) {
+                directReply = TERMINATION_REPLY;
+            } else if (directReply.isBlank() || containsInternalRole(directReply)) {
+                directReply = SMALLTALK_FALLBACK_REPLY;
+            }
         }
         if (result.route() == ConversationRouteResult.Route.CLARIFY && directReply.isBlank()) {
             directReply = CLARIFY_REPLY;
@@ -86,6 +108,38 @@ public class ConversationIntentRouter {
                 || directReply.contains("分类器")
                 || normalized.contains("router")
                 || normalized.contains("prompt");
+    }
+
+    private boolean isTerminationIntent(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String normalized = question.trim();
+        return TERMINATION_MARKERS.stream().anyMatch(normalized::contains);
+    }
+
+    private boolean isPlaceholderInput(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String normalized = question.trim();
+        boolean hasSpecificQuestion = normalized.matches(".*(什么|怎么|如何|能否|能不能|是否|条件|政策|规定|申请|要求|什么时候|去哪|哪里|多少|为什么).* ".trim());
+        if (hasSpecificQuestion) {
+            return false;
+        }
+        return normalized.contains("问你个事")
+                || normalized.contains("问个事")
+                || normalized.contains("问你一件事")
+                || normalized.contains("帮我同学问一个东西")
+                || normalized.equals("先等等")
+                || normalized.equals("等一下")
+                || normalized.equals("稍等一下");
+    }
+
+    private String placeholderReply(String question) {
+        return question.contains("同学")
+                ? "好的，请问你同学具体想咨询什么？"
+                : "好的，请问你具体想咨询什么？";
     }
 
     private String renderHistory(List<Message> history) {

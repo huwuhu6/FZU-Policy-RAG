@@ -122,12 +122,8 @@ public final class GroundedTurnModule {
                 .flatMap(history -> {
                     long sourcePlanStart = System.nanoTime();
                     String candidateContext = contextFormatter.formatCandidateEvidence(command.candidateEvidence());
-                    Mono<SourcePlanResult> sourcePlan = strategy.callSourcePlan(
-                                    reactiveChatGateway,
-                                    candidateContext,
-                                    command.userInput(),
-                                    command.conversationId(),
-                                    history);
+                    Mono<SourcePlanResult> sourcePlan = callSourcePlan(
+                            strategy, command, candidateContext, history);
                     return tracingSupport.traceMono("rag.source_plan", command.traceTags(), sourcePlan)
                             .doOnNext(plan -> log.info(
                                     "[RAG] source-plan traceId={} conversationId={} msgId={} candidateEvidence={} answerType={} requestedSources={} elapsedMs={}",
@@ -173,12 +169,8 @@ public final class GroundedTurnModule {
                         StringBuilder answerBuffer = new StringBuilder();
                         AtomicBoolean firstChunkSeen = new AtomicBoolean();
                         AtomicInteger chunkCount = new AtomicInteger();
-                        Flux<String> modelFlux = strategy.streamGroundedAnswer(
-                                reactiveChatGateway,
-                                formattedContext.text(),
-                                command.userInput(),
-                                command.conversationId(),
-                                history)
+                        Flux<String> modelFlux = streamGroundedAnswer(
+                                strategy, command, formattedContext.text(), history)
                                 .filter(chunk -> chunk != null && !chunk.isBlank())
                                 .doOnNext(chunk -> {
                                     answerBuffer.append(chunk);
@@ -330,6 +322,48 @@ public final class GroundedTurnModule {
         return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 
+    private Mono<SourcePlanResult> callSourcePlan(ChatModelStrategy strategy,
+                                                  Command command,
+                                                  String candidateContext,
+                                                  List<Message> history) {
+        if (command.hasDistinctSearchTargetQuery()) {
+            return strategy.callSourcePlan(
+                    reactiveChatGateway,
+                    candidateContext,
+                    command.userInput(),
+                    command.conversationId(),
+                    history,
+                    command.searchTargetQuery());
+        }
+        return strategy.callSourcePlan(
+                reactiveChatGateway,
+                candidateContext,
+                command.userInput(),
+                command.conversationId(),
+                history);
+    }
+
+    private Flux<String> streamGroundedAnswer(ChatModelStrategy strategy,
+                                              Command command,
+                                              String formattedContext,
+                                              List<Message> history) {
+        if (command.hasDistinctSearchTargetQuery()) {
+            return strategy.streamGroundedAnswer(
+                    reactiveChatGateway,
+                    formattedContext,
+                    command.userInput(),
+                    command.conversationId(),
+                    history,
+                    command.searchTargetQuery());
+        }
+        return strategy.streamGroundedAnswer(
+                reactiveChatGateway,
+                formattedContext,
+                command.userInput(),
+                command.conversationId(),
+                history);
+    }
+
     public record Command(
             String userInput,
             String conversationId,
@@ -339,11 +373,32 @@ public final class GroundedTurnModule {
             String msgId,
             String traceId,
             List<Document> candidateEvidence,
-            List<ParentContextBlock> parentContexts) {
+            List<ParentContextBlock> parentContexts,
+            String searchTargetQuery) {
+
+        public Command(String userInput,
+                       String conversationId,
+                       String userId,
+                       String modelId,
+                       String mode,
+                       String msgId,
+                       String traceId,
+                       List<Document> candidateEvidence,
+                       List<ParentContextBlock> parentContexts) {
+            this(userInput, conversationId, userId, modelId, mode, msgId, traceId,
+                    candidateEvidence, parentContexts, userInput);
+        }
 
         public Command {
             candidateEvidence = candidateEvidence == null ? List.of() : List.copyOf(candidateEvidence);
             parentContexts = parentContexts == null ? List.of() : List.copyOf(parentContexts);
+            searchTargetQuery = searchTargetQuery == null || searchTargetQuery.isBlank()
+                    ? userInput
+                    : searchTargetQuery;
+        }
+
+        public boolean hasDistinctSearchTargetQuery() {
+            return searchTargetQuery != null && !searchTargetQuery.equals(userInput);
         }
 
         public Map<String, Object> traceTags() {

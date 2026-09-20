@@ -22,7 +22,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class ConversationIntentRouterTest {
@@ -44,8 +47,8 @@ class ConversationIntentRouterTest {
     void setUp() {
         when(tracingSupport.traceMono(anyString(), anyMap(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(2));
-        when(strategyFactory.getStrategy("qwen")).thenReturn(strategy);
-        when(strategy.getChatClient()).thenReturn(chatClient);
+        lenient().when(strategyFactory.getStrategy("qwen")).thenReturn(strategy);
+        lenient().when(strategy.getChatClient()).thenReturn(chatClient);
         router = new ConversationIntentRouter(strategyFactory, reactiveChatGateway, tracingSupport);
     }
 
@@ -104,5 +107,33 @@ class ConversationIntentRouterTest {
                     assertEquals(ConversationIntentRouter.SMALLTALK_FALLBACK_REPLY, result.directReply());
                 })
                 .verifyComplete();
+    }
+
+    @Test
+    void handlesTerminationWithoutReturningInitialGreeting() {
+        StepVerifier.create(router.route("我不想问这个了", List.of(), "qwen",
+                        RagRequestContext.create("trace-1", "conversation-1", "msg-1", "qwen")))
+                .assertNext(result -> {
+                    assertEquals(ConversationRouteResult.Route.SMALLTALK, result.route());
+                    assertEquals(ConversationIntentRouter.TERMINATION_REPLY, result.directReply());
+                })
+                .verifyComplete();
+
+        verify(reactiveChatGateway, never()).callBufferedConversationRoute(
+                any(), anyString(), anyMap(), any(), anyString(), any());
+    }
+
+    @Test
+    void classifiesPlaceholderQuestionAsClarifyWithoutCallingModel() {
+        StepVerifier.create(router.route("噢噢噢好，那我帮我同学问一个东西", List.of(), "qwen",
+                        RagRequestContext.create("trace-1", "conversation-1", "msg-1", "qwen")))
+                .assertNext(result -> {
+                    assertEquals(ConversationRouteResult.Route.CLARIFY, result.route());
+                    assertEquals("好的，请问你同学具体想咨询什么？", result.directReply());
+                })
+                .verifyComplete();
+
+        verify(reactiveChatGateway, never()).callBufferedConversationRoute(
+                any(), anyString(), anyMap(), any(), anyString(), any());
     }
 }

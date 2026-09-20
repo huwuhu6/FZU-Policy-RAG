@@ -137,7 +137,7 @@ public class MarkdownParseStrategy implements FileParseStrategy {
 
                     // 构建当前 Section 的面包屑路径
                     List<String> sectionBreadcrumb = new ArrayList<>(breadcrumb);
-                    sectionBreadcrumb.add(headingText);
+                    appendHeadingIfDistinct(sectionBreadcrumb, headingText);
                     currentSection = new SectionBuilder(sectionBreadcrumb, heading);
                 }
 
@@ -256,6 +256,24 @@ public class MarkdownParseStrategy implements FileParseStrategy {
         metadata.put("parent_index", parentIndex);
         metadata.put("chunk_schema_version", KnowledgeParentBlockService.CHUNK_SCHEMA_VERSION);
         return metadata;
+    }
+
+    private void appendHeadingIfDistinct(List<String> breadcrumb, String headingText) {
+        String normalizedHeading = headingText == null ? "" : headingText.trim();
+        if (normalizedHeading.isEmpty()) {
+            return;
+        }
+        String first = breadcrumb.isEmpty() ? "" : breadcrumb.get(0);
+        String last = breadcrumb.isEmpty() ? "" : breadcrumb.get(breadcrumb.size() - 1);
+        if (sameHeading(normalizedHeading, first) || sameHeading(normalizedHeading, last)) {
+            return;
+        }
+        breadcrumb.add(normalizedHeading);
+    }
+
+    private boolean sameHeading(String left, String right) {
+        return left != null && right != null
+                && left.trim().equalsIgnoreCase(right.trim());
     }
 
     private Heading findFirstHeading(Node document, int targetLevel) {

@@ -93,6 +93,7 @@ class ChatServiceGroundedTurnTest {
         ArgumentCaptor<GroundedTurnModule.Command> commandCaptor = ArgumentCaptor.forClass(GroundedTurnModule.Command.class);
         verify(groundedTurnModule).stream(commandCaptor.capture());
         assertEquals("rag", commandCaptor.getValue().mode());
+        assertEquals("rewritten question", commandCaptor.getValue().searchTargetQuery());
         assertEquals(List.of(candidate), commandCaptor.getValue().candidateEvidence());
         assertEquals(List.of(parent), commandCaptor.getValue().parentContexts());
     }

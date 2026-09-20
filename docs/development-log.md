@@ -266,3 +266,35 @@ RAG 请求入口日志补充用户输入，QueryPreProcessor 日志补充原始 
 最终回答提示词要求先用一句话给出结论，再说明政策依据、适用条件和办理要点；当用户问题缺少必要个人信息时，先回答当前可确定的部分，再在结尾询问必要的补充信息。该调整只影响回答表达，不放宽知识库证据约束、不改变引用校验和 SSE 链路。
 
 补充修复会话路由器内部角色泄露：路由提示词明确要求 `directReply` 使用最终助手身份，后端对“路由器/分类器/Prompt”等内部表述做用户侧兜底替换，并扩充“你是谁啊”等确定性身份问候匹配。
+
+## 2026-09-20｜修复转专业否定性证据被 Source Plan 拒答
+
+### 起因与定位
+
+第 4 轮会话中，历史上下文已经明确用户是美院艺术类学生，当前追问“我能不能转计算机啊，我好喜欢”时，Milvus 召回了《福州大学本科生转专业管理实施办法》中“普通类与艺术类之间不能申请互转”“艺术类学生只能在艺术类专业内转专业”等限制性条款，Rerank 结果也全部通过 `0.30` 阈值，但 Source Plan 仍返回 `refusal + usedSources=[]`。排查确认不是 Milvus、Rerank 或 UsedSourceValidator 清空候选，而是 Source Plan 只接收到原始口语问题，未显式看到 QueryPreProcessor 生成的规范化核心诉求。
+
+### 修改
+
+- `GroundedTurnModule.Command` 增加 `searchTargetQuery`，`ChatService` 将 QueryPreProcessor 的重写结果传入 GroundedTurnModule；保留旧构造器，兼容 Agent 路径和既有调用。
+- Source Plan 与 Qwen 最终回答 Prompt 增加“规范化后的核心诉求”，避免 Source Plan 只根据“我能不能转计算机”判断证据是否相关。
+- 明确否定性政策结论属于 `factual`，必须引用对应限制条款；允许对计算机、电气、机械等进行有限的普通理工类归纳，并将“艺术类不可转入普通类”视为合规事实推导。
+- 将真正的 `refusal` 收窄为没有相关教务规章、主观评价或与教务规程无关的问题；最终回答 Prompt 要求对明确禁止情形先给出客观否定结论，再补充条件和待确认信息。
+- 保留现有 Source Plan 校验、UsedSourceValidator、两阶段 Qwen 流式输出和 SSE 契约不变。
+
+### 验证与当前限制
+
+已完成代码级修改，待执行 `mvn clean compile` 和转专业历史会话回归。Source Plan 仍只返回 `answerType` 与 `usedSources`，不会返回模型拒答理由；后续以实际回归日志确认是否从 `refusal` 变为 `factual` 并选中限制性 evidence_id。
+
+## 2026-09-20｜收口会话意图与来源展示
+
+### 起因与修改
+
+真实测试暴露出四个用户侧问题：用户说“我不想问这个了”时被路由成普通 smalltalk 并再次收到初始欢迎语；“我帮我同学问一个东西”等垫话可能被模型误判为可检索问题；Markdown 文档的 frontmatter/title 与首个 H1 重复，生成 `A > A` 面包屑；前端来源按 `doc_uuid + page` 去重，多个子块或重复导入文档仍会刷屏。
+
+- `ConversationIntentRouter` 增加终止语和占位垫话的确定性短路：终止语返回礼貌收尾，缺少具体问题的垫话返回 `CLARIFY`，不触发 FAQ、Milvus 或 Rerank；Prompt 同步补充终止语、占位输入和新主体身份隔离规则。
+- `MarkdownParseStrategy` 添加标题去重，当前标题与根标题或路径末级标题相同（忽略大小写和首尾空白）时不再重复追加。
+- `UserChatView.vue` 将来源去重改为“规范化标题 + 规范化页码/章节路径”，并折叠连续重复的 Breadcrumb 段落；章节路径与标题相同时只显示文档标题。
+
+### 验证
+
+`ConversationIntentRouterTest`、`ChatServicePromptTest`、`QueryPreProcessorTest` 定向测试通过；`mvn clean compile` 和 `npm run build` 均通过（前端构建仅有既有 Rollup 注释及 chunk size 警告）。未修改 RAG 检索、Rerank 或 SSE 契约。

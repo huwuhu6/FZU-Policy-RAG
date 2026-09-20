@@ -121,7 +121,8 @@ public class ChatService {
                                     msgId,
                                     traceId,
                                     retrievalResult.childCandidates(),
-                                    retrievalResult.parentContexts())))
+                                    retrievalResult.parentContexts(),
+                                    processed.searchTargetQuery())))
                             .map(result -> new ChatStreamResponse(
                                     result.answerFlux()
                                             .doOnComplete(() -> logCompleted(

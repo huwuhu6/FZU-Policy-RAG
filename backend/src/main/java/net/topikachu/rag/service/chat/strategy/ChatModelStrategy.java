@@ -32,10 +32,27 @@ public interface ChatModelStrategy {
                                                    String userInput,
                                                    String conversationId,
                                                    List<Message> historyMessages) {
+        return callSourcePlan(
+                reactiveChatGateway,
+                context,
+                userInput,
+                conversationId,
+                historyMessages,
+                userInput);
+    }
+
+    default Mono<SourcePlanResult> callSourcePlan(ReactiveChatGateway reactiveChatGateway,
+                                                   String context,
+                                                   String userInput,
+                                                   String conversationId,
+                                                   List<Message> historyMessages,
+                                                   String searchTargetQuery) {
         return reactiveChatGateway.callBufferedSourcePlan(
                 getChatClient(),
                 net.topikachu.rag.service.chat.SourcedAnswerPrompts.sourcePlanPrompt(),
-                Map.of("context", context, "question", userInput),
+                Map.of("context", context,
+                        "question", userInput,
+                        "searchTargetQuery", searchTargetQuery),
                 historyMessages,
                 userInput,
                 conversationId);
@@ -46,10 +63,27 @@ public interface ChatModelStrategy {
                                                String userInput,
                                                String conversationId,
                                                List<Message> historyMessages) {
+        return streamGroundedAnswer(
+                reactiveChatGateway,
+                context,
+                userInput,
+                conversationId,
+                historyMessages,
+                userInput);
+    }
+
+    default Flux<String> streamGroundedAnswer(ReactiveChatGateway reactiveChatGateway,
+                                               String context,
+                                               String userInput,
+                                               String conversationId,
+                                               List<Message> historyMessages,
+                                               String searchTargetQuery) {
         return reactiveChatGateway.stream(
                 getChatClient(),
                 net.topikachu.rag.service.chat.SourcedAnswerPrompts.answerPrompt(),
-                Map.of("context", context, "question", userInput),
+                Map.of("context", context,
+                        "question", userInput,
+                        "searchTargetQuery", searchTargetQuery),
                 historyMessages,
                 userInput,
                 conversationId);
