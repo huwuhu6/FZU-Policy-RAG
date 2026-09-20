@@ -1,6 +1,7 @@
 package net.topikachu.rag.service.chat;
 
 import net.topikachu.rag.chat.history.ChatHistoryService;
+import net.topikachu.rag.observability.TracingSupport;
 import net.topikachu.rag.service.chat.strategy.ChatModelStrategy;
 import net.topikachu.rag.service.chat.strategy.ChatModelStrategyFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +54,9 @@ class GroundedTurnModuleTest {
     @Mock
     private ChatHistoryService chatHistoryService;
 
+    @Mock
+    private TracingSupport tracingSupport;
+
     private GroundedTurnModule module;
 
     @BeforeEach
@@ -62,8 +66,14 @@ class GroundedTurnModuleTest {
                 strategyFactory,
                 reactiveChatGateway,
                 new UsedSourceValidator(),
+                tracingSupport,
                 chatMemory,
                 chatHistoryService);
+        org.mockito.Mockito.lenient().when(tracingSupport.traceMono(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyMap(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
     }
 
     @Test
@@ -75,7 +85,8 @@ class GroundedTurnModuleTest {
         when(chatMemory.get("conversation-1")).thenReturn(List.of(
                 new UserMessage("previous question"),
                 new AssistantMessage("previous answer")));
-        when(contextFormatter.formatParentContexts(anyList())).thenReturn("parent context");
+        when(contextFormatter.formatParentContextsWithStats(anyList()))
+                .thenReturn(new ContextFormatter.FormattedContext("parent context", false));
         when(strategyFactory.getStrategy("model-1")).thenReturn(strategy);
         when(strategy.callSourcedAnswer(
                 same(reactiveChatGateway),
@@ -104,7 +115,8 @@ class GroundedTurnModuleTest {
         GroundedTurnModule.Command command = command(List.of(candidate("ev-1", "doc-1", "first.pdf")));
 
         when(chatMemory.get("conversation-1")).thenReturn(List.of());
-        when(contextFormatter.formatParentContexts(anyList())).thenReturn("parent context");
+        when(contextFormatter.formatParentContextsWithStats(anyList()))
+                .thenReturn(new ContextFormatter.FormattedContext("parent context", false));
         when(strategyFactory.getStrategy("model-1")).thenReturn(strategy);
         when(strategy.callSourcedAnswer(
                 same(reactiveChatGateway),
@@ -136,7 +148,8 @@ class GroundedTurnModuleTest {
             memoryBarrier.asMono().block();
             return null;
         }).when(chatMemory).add(eq("conversation-1"), anyList());
-        when(contextFormatter.formatParentContexts(anyList())).thenReturn("parent context");
+        when(contextFormatter.formatParentContextsWithStats(anyList()))
+                .thenReturn(new ContextFormatter.FormattedContext("parent context", false));
         when(strategyFactory.getStrategy("model-1")).thenReturn(strategy);
         when(strategy.callSourcedAnswer(
                 same(reactiveChatGateway), eq("parent context"), eq("question"), eq("conversation-1"), anyList()))
@@ -152,6 +165,40 @@ class GroundedTurnModuleTest {
                 .then(() -> memoryBarrier.tryEmitEmpty())
                 .assertNext(result -> assertEquals("answer", result.answer()))
                 .verifyComplete();
+    }
+
+    @Test
+    void mapsStructuredAnswerFailureToSourceValidationFailure() {
+        GroundedTurnModule.Command command = command(List.of(candidate("ev-1", "doc-1", "first.pdf")));
+        when(chatMemory.get("conversation-1")).thenReturn(List.of());
+        when(contextFormatter.formatParentContextsWithStats(anyList()))
+                .thenReturn(new ContextFormatter.FormattedContext("parent context", false));
+        when(strategyFactory.getStrategy("model-1")).thenReturn(strategy);
+        when(strategy.callSourcedAnswer(same(reactiveChatGateway), eq("parent context"), eq("question"),
+                eq("conversation-1"), anyList()))
+                .thenReturn(Mono.error(new StructuredAnswerException("invalid JSON")));
+
+        StepVerifier.create(module.execute(command))
+                .expectErrorMatches(error -> error instanceof SourceValidationException validationError
+                        && "json_parse_failed".equals(validationError.getReason()))
+                .verify();
+    }
+
+    @Test
+    void doesNotMapUnrelatedRuntimeFailureToSourceValidationFailure() {
+        GroundedTurnModule.Command command = command(List.of(candidate("ev-1", "doc-1", "first.pdf")));
+        when(chatMemory.get("conversation-1")).thenReturn(List.of());
+        when(contextFormatter.formatParentContextsWithStats(anyList()))
+                .thenReturn(new ContextFormatter.FormattedContext("parent context", false));
+        when(strategyFactory.getStrategy("model-1")).thenReturn(strategy);
+        RuntimeException failure = new RuntimeException("upstream timeout");
+        when(strategy.callSourcedAnswer(same(reactiveChatGateway), eq("parent context"), eq("question"),
+                eq("conversation-1"), anyList()))
+                .thenReturn(Mono.error(failure));
+
+        StepVerifier.create(module.execute(command))
+                .expectErrorSatisfies(error -> assertEquals(failure, error))
+                .verify();
     }
 
     private GroundedTurnModule.Command command(List<Document> candidates) {

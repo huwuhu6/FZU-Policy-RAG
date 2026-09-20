@@ -40,7 +40,7 @@ public class ReactiveChatGateway {
     private final TracingSupport tracingSupport;
     private final ObjectMapper objectMapper;
 
-    @Value("${rag.llm.log-raw-response:true}")
+    @Value("${rag.llm.log-raw-response:false}")
     private boolean logRawResponse;
 
     public ReactiveChatGateway(TracingSupport tracingSupport, ObjectMapper objectMapper) {
@@ -397,9 +397,8 @@ public class ReactiveChatGateway {
         }
         OpenAiApi.ChatCompletionMessage.ToolCall toolCall = message.toolCalls().get(0);
         OpenAiApi.ChatCompletionMessage.ChatCompletionFunction function = toolCall.function();
-        log.info("[LLM-RAW-SOURCED-ANSWER-TOOL] name={}, arguments={}",
-                function == null ? "" : function.name(),
-                function == null ? "" : function.arguments());
+        log.debug("[LLM-TOOL] sourced answer tool name={}",
+                function == null ? "" : function.name());
         if (function == null || !SUBMIT_SOURCED_ANSWER_TOOL.equals(function.name())) {
             throw new IllegalArgumentException("Unexpected structured sourced answer tool call: "
                     + (function == null ? "" : function.name()));
@@ -471,12 +470,12 @@ public class ReactiveChatGateway {
 
     static SourcedAnswerResult decodeStrictSourcedAnswer(String raw, ObjectMapper objectMapper) {
         if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException("LLM returned blank sourced answer JSON.");
+            throw new StructuredAnswerException("LLM returned blank sourced answer JSON.");
         }
         try {
             JsonNode root = objectMapper.readTree(raw);
             if (root == null || !root.isObject()) {
-                throw new IllegalArgumentException("Sourced answer must be a JSON object.");
+                throw new StructuredAnswerException("Sourced answer must be a JSON object.");
             }
 
             Set<String> allowedFields = Set.of("answer", "answerType", "usedSources");
@@ -484,29 +483,29 @@ public class ReactiveChatGateway {
             while (fields.hasNext()) {
                 String field = fields.next();
                 if (!allowedFields.contains(field)) {
-                    throw new IllegalArgumentException("Unexpected sourced answer field: " + field);
+                    throw new StructuredAnswerException("Unexpected sourced answer field: " + field);
                 }
             }
             if (!root.has("answer") || !root.has("answerType") || !root.has("usedSources")) {
-                throw new IllegalArgumentException("Sourced answer is missing a required field.");
+                throw new StructuredAnswerException("Sourced answer is missing a required field.");
             }
             if (!root.path("answer").isTextual()
                     || !root.path("answerType").isTextual()
                     || !root.path("usedSources").isArray()) {
-                throw new IllegalArgumentException("Sourced answer has invalid field types.");
+                throw new StructuredAnswerException("Sourced answer has invalid field types.");
             }
             String answerType = root.path("answerType").asText();
             if (!"factual".equals(answerType) && !"refusal".equals(answerType)) {
-                throw new IllegalArgumentException("Sourced answer has an invalid answerType.");
+                throw new StructuredAnswerException("Sourced answer has an invalid answerType.");
             }
             for (JsonNode source : root.path("usedSources")) {
                 if (!source.isTextual()) {
-                    throw new IllegalArgumentException("usedSources must contain only strings.");
+                    throw new StructuredAnswerException("usedSources must contain only strings.");
                 }
             }
             return objectMapper.readValue(raw, SourcedAnswerResult.class);
         } catch (JsonProcessingException error) {
-            throw new IllegalArgumentException("Could not parse sourced answer JSON.", error);
+            throw new StructuredAnswerException("Could not parse sourced answer JSON.", error);
         }
     }
 

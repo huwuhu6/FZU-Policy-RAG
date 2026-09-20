@@ -69,16 +69,10 @@ public class ChatService {
     public Mono<ChatStreamResponse> streamWithSources(String userInput, String conversationId,
             CurrentUserContext currentUserContext, SearchScope searchScope,
             String modelId, String msgId) {
-        log.info("Processing query: '{}', conversationId: {}, spaces: {}, tags: {}, modelId: {}, user={}",
-                userInput, conversationId,
-                searchScope == null ? List.of() : searchScope.requestedSpaceCodes(),
-                searchScope == null ? List.of() : searchScope.requestedTags(),
-                modelId,
-                currentUserContext == null ? null : currentUserContext.username());
-
         String traceId = tracingSupport.getCurrentTraceId();
+        RagRequestContext requestContext = RagRequestContext.create(traceId, conversationId, msgId, modelId);
 
-        return queryPreProcessor.process(userInput, conversationId, modelId)
+        return queryPreProcessor.process(userInput, conversationId, modelId, requestContext)
                 .flatMap(processed -> {
                     GroundedTurnModule.Command command = new GroundedTurnModule.Command(
                             userInput,
@@ -90,23 +84,29 @@ public class ChatService {
                             traceId,
                             List.of(),
                             List.of());
-                    if (processed.isChitChat()) {
-                        return groundedTurnModule.commitDirectReply(command, processed.directReply())
+                    if (processed.route() == QueryPreProcessor.PreprocessRoute.CHITCHAT
+                            || processed.route() == QueryPreProcessor.PreprocessRoute.FAQ) {
+                        String answerType = processed.route() == QueryPreProcessor.PreprocessRoute.FAQ
+                                ? "faq"
+                                : "chitchat";
+                        return groundedTurnModule.commitDirectReply(command, processed.directReply(), answerType)
                                 .thenReturn(new ChatStreamResponse(
                                         Flux.just(processed.directReply()),
-                                        List.of()));
+                                        List.of()))
+                                .doOnSuccess(response -> logCompleted(requestContext, processed.route(), answerType, 0));
                     }
 
+                    Map<String, Object> retrievalTags = new java.util.LinkedHashMap<>(requestContext.traceTags());
+                    retrievalTags.put("chat.mode", "rag");
+                    retrievalTags.put("chat.model_id", modelId == null ? "" : modelId);
+                    retrievalTags.put("chat.conversation_id", conversationId == null ? "" : conversationId);
                     return retrievalPipeline.retrieveWithParentContexts(
                                     processed.searchTargetQuery(),
                                     currentUserContext,
                                     searchScope,
                                     hybridTopK,
                                     rerankTopK,
-                                    Map.of(
-                                            "chat.mode", "rag",
-                                            "chat.model_id", modelId == null ? "" : modelId,
-                                            "chat.conversation_id", conversationId == null ? "" : conversationId))
+                                    retrievalTags)
                             .flatMap(retrievalResult -> groundedTurnModule.execute(new GroundedTurnModule.Command(
                                     userInput,
                                     conversationId,
@@ -117,8 +117,20 @@ public class ChatService {
                                     traceId,
                                     retrievalResult.childCandidates(),
                                     retrievalResult.parentContexts())))
-                            .map(result -> new ChatStreamResponse(Flux.just(result.answer()), result.usedSources()));
+                            .map(result -> {
+                                logCompleted(requestContext, processed.route(), result.answerType(), result.usedSources().size());
+                                return new ChatStreamResponse(Flux.just(result.answer()), result.usedSources());
+                            });
                 });
+    }
+
+    private void logCompleted(RagRequestContext context,
+                              QueryPreProcessor.PreprocessRoute route,
+                              String answerType,
+                              int sourceCount) {
+        log.info("[RAG] completed traceId={} conversationId={} msgId={} route={} answerType={} sources={} totalMs={}",
+                context.traceId(), context.conversationId(), context.msgId(), route, answerType, sourceCount,
+                context.elapsedMs());
     }
 
     /**

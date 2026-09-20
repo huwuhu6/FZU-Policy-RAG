@@ -208,3 +208,17 @@ Embedding、Milvus 和 Rerank 均可完成，但 Qwen Chat 使用 `DashScopeChat
 新增 Chat HTTP 配置、结构化解析、流式片段顺序和 Query Rewrite fallback 测试。定向 34 个测试全部通过；`mvn clean compile` 通过。定向测试在本机 JDK 21 下需要 Surefire 启用动态 agent 参数，这是 Mockito 测试运行环境要求，未修改项目生产配置。
 
 真实 smoke test 首次使用旧 PowerShell 进程继承的旧凭据，Embedding 和 Chat 均返回 DashScope `401 invalid_api_key`；核对环境变量长度后确认该进程值与 Machine 级新值不同。临时启动新 JVM 并显式使用 Machine 级环境变量后，Embedding、Milvus、Rerank 和 Qwen Chat 均返回成功。无历史政策问题、带历史追问和 ChitChat 均完成验证；ChitChat 返回固定引导文本且不触发 Embedding/Rerank，正常回答返回非空 evidence。主回答通过 `ChatClient.stream()` 获取模型结果并在后端缓冲后校验，外部仍保持 SSE；会话标题服务仍有独立的非流式标题请求，不属于 RAG 回答主链。查询重写异常/超时的 fail-open 由定向测试覆盖。未记录或提交任何真实 API Key。
+
+## 2026-09-20｜补齐 RAG 阶段可观测性与 FAQ 安全快路径
+
+### 设计与边界
+
+本轮将 strict grounded answer 的结构非法结果统一归类为 `StructuredAnswerException`，只在 `GroundedTurnModule` 中映射为 `SourceValidationException(json_parse_failed)`；普通网络、超时、检索和数据库异常不再依赖异常文本判断，也不会被误报为证据不足。
+
+标准 `mode=rag` 增加以 `traceId`、`conversationId`、`msgId`、`modelId` 关联的低噪音阶段日志和 tracing：start、preprocess、hybrid、rerank、parent/context、generate、validate、persist、completed，以及对应的失败/fallback 状态。日志只记录字符数、候选数量、阈值、耗时和 answerType 等摘要，不记录完整 Query、Prompt、Context、回答或 Authorization/API Key。`rag.llm.log-raw-response` 默认保持关闭。
+
+在 Exact ChitChat 与历史 Query Rewrite 之间加入人工维护 FAQ 的 Dense cosine fast-path。FAQ 使用 `rag/faq.json` 的小型资源文件和 DashScope Dense embedding，默认阈值为 `0.95`、Top1/Top2 margin 为 `0.03`；当前模板为空，避免凭空固化未经审核的政策答案。FAQ 初始化、embedding 或相似度异常均 fail-open 回到 ORIGINAL/REWRITE；明显上下文依赖的追问不参与 FAQ 匹配。命中 FAQ 时跳过 Retrieval、Rerank、Parent Expansion 和最终 LLM，但复用现有 ChatMemory/ChatHistory 持久化，sources 为空。
+
+### 验证
+
+`mvn clean compile` 通过；本轮定向测试 43 个全部通过，覆盖结构化异常边界、FAQ threshold/margin/fail-open、路由顺序、FAQ 持久化和既有 Retrieval 回归。全量测试 176 个中 174 个通过，剩余 `ReactiveRefactorGuardTest` 的既有 Agent/ETL `.block()` 守卫问题及本机 Milvus 未连接导致的 `DEADLINE_EXCEEDED` 与本轮无关。本轮未实现浏览器端 Token Streaming，未修改 SSE 协议、Retrieval/Rerank/Parent-Child 算法、Embedding 模型或 Chat HTTP timeout。

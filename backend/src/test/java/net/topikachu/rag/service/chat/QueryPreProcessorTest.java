@@ -48,15 +48,20 @@ class QueryPreProcessorTest {
     @Mock
     private TracingSupport tracingSupport;
 
+    @Mock
+    private FaqSemanticMatcher faqSemanticMatcher;
+
     @BeforeEach
     void setUp() {
         lenient().when(tracingSupport.traceMono(anyString(), anyMap(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(2));
+        lenient().when(faqSemanticMatcher.match(anyString(), any()))
+                .thenReturn(Mono.just(FaqSemanticMatcher.Match.miss()));
     }
 
     @Test
     void interceptsOnlyExactChitChatInputs() {
-        QueryPreProcessor processor = new QueryPreProcessor(chatMemory, strategyFactory, reactiveChatGateway, tracingSupport);
+        QueryPreProcessor processor = processor();
 
         StepVerifier.create(processor.process("  你好  ", "conversation-1", "qwen"))
                 .assertNext(result -> {
@@ -68,11 +73,43 @@ class QueryPreProcessorTest {
 
         verify(chatMemory, never()).get(anyString());
         verifyNoModelInteractions();
+        verify(faqSemanticMatcher, never()).match(anyString(), any());
+    }
+
+    @Test
+    void routesHighConfidenceFaqBeforeHistoryRewrite() {
+        QueryPreProcessor processor = processor();
+        when(faqSemanticMatcher.match(eq("转专业什么时候申请"), any()))
+                .thenReturn(Mono.just(new FaqSemanticMatcher.Match(
+                        true, "faq-transfer-time", "请以教务处最新通知为准。", 0.98d)));
+
+        StepVerifier.create(processor.process("转专业什么时候申请", "conversation-1", "qwen"))
+                .assertNext(result -> {
+                    assertEquals(QueryPreProcessor.PreprocessRoute.FAQ, result.route());
+                    assertEquals("faq-transfer-time", result.faqId());
+                    assertEquals("请以教务处最新通知为准。", result.directReply());
+                })
+                .verifyComplete();
+
+        verify(chatMemory, never()).get(anyString());
+        verify(strategyFactory, never()).getStrategy(anyString());
+    }
+
+    @Test
+    void doesNotFaqMatchContextDependentFollowup() {
+        QueryPreProcessor processor = processor();
+        when(chatMemory.get("conversation-1")).thenReturn(List.of());
+
+        StepVerifier.create(processor.process("那什么时候呢？", "conversation-1", "qwen"))
+                .assertNext(result -> assertEquals(QueryPreProcessor.PreprocessRoute.ORIGINAL, result.route()))
+                .verifyComplete();
+
+        verify(faqSemanticMatcher, never()).match(anyString(), any());
     }
 
     @Test
     void rewritesUsingOnlyTheMostRecentFourConversationMessages() {
-        QueryPreProcessor processor = new QueryPreProcessor(chatMemory, strategyFactory, reactiveChatGateway, tracingSupport);
+        QueryPreProcessor processor = processor();
         when(chatMemory.get("conversation-1")).thenReturn(List.of(
                 new UserMessage("old-1"),
                 new AssistantMessage("old-2"),
@@ -109,7 +146,7 @@ class QueryPreProcessorTest {
 
     @Test
     void keepsStandaloneQueryWithoutHistory() {
-        QueryPreProcessor processor = new QueryPreProcessor(chatMemory, strategyFactory, reactiveChatGateway, tracingSupport);
+        QueryPreProcessor processor = processor();
         when(chatMemory.get("conversation-1")).thenReturn(List.of());
 
         StepVerifier.create(processor.process("  转专业政策  ", "conversation-1", "qwen"))
@@ -124,7 +161,7 @@ class QueryPreProcessorTest {
 
     @Test
     void rewriteFailureFallsBackToOriginalQuery() {
-        QueryPreProcessor processor = new QueryPreProcessor(chatMemory, strategyFactory, reactiveChatGateway, tracingSupport);
+        QueryPreProcessor processor = processor();
         when(chatMemory.get("conversation-1")).thenReturn(List.of(
                 new UserMessage("转专业"),
                 new AssistantMessage("请问具体哪一方面？")));
@@ -144,7 +181,7 @@ class QueryPreProcessorTest {
 
     @Test
     void blankRewriteFallsBackToOriginalQuery() {
-        QueryPreProcessor processor = new QueryPreProcessor(chatMemory, strategyFactory, reactiveChatGateway, tracingSupport);
+        QueryPreProcessor processor = processor();
         when(chatMemory.get("conversation-1")).thenReturn(List.of(
                 new UserMessage("转专业"),
                 new AssistantMessage("请问具体哪一方面？")));
@@ -162,5 +199,9 @@ class QueryPreProcessorTest {
     private void verifyNoModelInteractions() {
         verify(strategyFactory, never()).getStrategy(anyString());
         verify(reactiveChatGateway, never()).callBufferedStream(any(), anyString(), anyMap(), anyString());
+    }
+
+    private QueryPreProcessor processor() {
+        return new QueryPreProcessor(chatMemory, strategyFactory, reactiveChatGateway, tracingSupport, faqSemanticMatcher);
     }
 }

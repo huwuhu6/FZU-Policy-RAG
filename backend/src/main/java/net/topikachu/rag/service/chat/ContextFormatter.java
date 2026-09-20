@@ -24,7 +24,12 @@ public class ContextFormatter {
     // 将父块上下文列表格式化为 LLM Prompt 中的结构化证据块
     // 每个父块包含：来源文件+位置、parent_block_id、可引用的 evidence_id 列表、完整段落内容
     public String formatParentContexts(List<ParentContextBlock> parentContexts) {
+        return formatParentContextsWithStats(parentContexts).text();
+    }
+
+    public FormattedContext formatParentContextsWithStats(List<ParentContextBlock> parentContexts) {
         StringBuilder contextBuilder = new StringBuilder();
+        boolean truncated = false;
         for (int i = 0; i < parentContexts.size(); i++) {
             ParentContextBlock block = parentContexts.get(i);
             String structuredEntry = String.format(
@@ -46,11 +51,15 @@ public class ContextFormatter {
             // 超长保护：上下文总长度超过 maxContextChars(40000) 时截断，避免撑爆 token 窗口
             if (contextBuilder.length() + structuredEntry.length() > maxContextChars) {
                 log.warn("Parent context limit reached, dropping remaining parent blocks from rank {}", i);
+                truncated = true;
                 break;
             }
             contextBuilder.append(structuredEntry);
         }
-        return contextBuilder.toString();
+        return new FormattedContext(contextBuilder.toString(), truncated);
+    }
+
+    public record FormattedContext(String text, boolean truncated) {
     }
 
     public <T> String format(List<T> docs,

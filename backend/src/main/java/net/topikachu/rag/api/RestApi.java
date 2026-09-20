@@ -92,6 +92,12 @@ public class RestApi {
 									msgId);
 						}
 
+						log.info("[RAG] start traceId={} conversationId={} msgId={} model={} inputChars={} spaces={} tagCount={}",
+								tracingSupport.getCurrentTraceId(), conversationKey, msgId, chatRequest.modelId(),
+								chatRequest.userInput() == null ? 0 : chatRequest.userInput().length(),
+								searchScope == null ? 0 : searchScope.requestedSpaceCodes().size(),
+								searchScope == null ? 0 : searchScope.requestedTags().size());
+
 						return chatService.streamWithSources(
 										chatRequest.userInput(),
 										conversationKey,

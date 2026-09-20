@@ -34,6 +34,9 @@ public class RetrievalPipeline {
     @Value("${rag.retrieval.final-child-topk:6}")
     private int finalChildTopK = 6;
 
+    @Value("${rag.retrieval.dense-topk:50}")
+    private int denseTopK = 50;
+
     public RetrievalPipeline(HybridSearchService hybridSearchService,
                              RerankService rerankService,
                              TracingSupport tracingSupport,
@@ -72,7 +75,7 @@ public class RetrievalPipeline {
                     if (childCandidates == null || childCandidates.isEmpty()) {
                         return Mono.just(new RetrievalResult(List.of(), List.of()));
                     }
-                    return expandParentContexts(childCandidates)
+                    return expandParentContexts(childCandidates, extraTags)
                             .map(parentContexts -> new RetrievalResult(childCandidates, parentContexts));
                 });
     }
@@ -103,10 +106,13 @@ public class RetrievalPipeline {
 
         return tracingSupport.traceMono("rag.hybrid_search", traceTags,
                         hybridSearchService.hybridSearch(query, currentUserContext, searchScope, hybridTopK, useSparseSearch))
-                .doOnNext(candidates -> log.debug("Hybrid search returned {} candidates in {}ms",
-                        candidates.size(), System.currentTimeMillis() - searchStart))
-                .doOnError(error -> log.error("Retrieval stage failed for query='{}', searchScope={}",
-                        query, searchScope, error))
+                .doOnNext(candidates -> log.info("[RAG] hybrid traceId={} conversationId={} msgId={} candidates={} denseTopK={} hybridTopK={} sparse={} elapsedMs={}",
+                        tag(extraTags, "rag.trace_id"), tag(extraTags, "rag.conversation_id"), tag(extraTags, "rag.msg_id"),
+                        candidates.size(), denseTopK, hybridTopK, useSparseSearch,
+                        System.currentTimeMillis() - searchStart))
+                .doOnError(error -> log.warn("[RAG] hybrid failed traceId={} conversationId={} msgId={} errorType={}",
+                        tag(extraTags, "rag.trace_id"), tag(extraTags, "rag.conversation_id"), tag(extraTags, "rag.msg_id"),
+                        error.getClass().getSimpleName()))
                 .flatMap(candidates -> {
                     if (candidates == null || candidates.isEmpty()) {
                         return Mono.just(Collections.emptyList());
@@ -116,19 +122,43 @@ public class RetrievalPipeline {
                         return Mono.just(candidates.subList(0, Math.min(candidates.size(), rerankTopK)));
                     }
                     long rerankStart = System.currentTimeMillis();
+                    Map<String, Object> rerankTags = new java.util.HashMap<>(extraTags == null ? Map.of() : extraTags);
+                    rerankTags.put("rag.candidate_count", candidates.size());
+                    rerankTags.put("rag.rerank_topk", rerankTopK);
                     return tracingSupport.traceMono("rag.rerank",
-                                    Map.of(
-                                            "rag.candidate_count", candidates.size(),
-                                            "rag.rerank_topk", rerankTopK),
+                                    rerankTags,
                                     rerankService.rerank(query, candidates, rerankTopK))
-                            .doOnNext(docs -> log.debug("Rerank returned {} docs in {}ms",
-                                    docs.size(), System.currentTimeMillis() - rerankStart))
+                            .map(docs -> new RerankStageResult(docs, hasNoValidScore(docs),
+                                    hasNoValidScore(docs) ? "missing_rerank_score" : null))
                             .onErrorResume(error -> {
-                                log.warn("Rerank failed, fallback to raw candidates: {}", error.getMessage());
-                                return Mono.just(candidates.subList(0, Math.min(candidates.size(), rerankTopK)));
+                                log.warn("[RAG] rerank failed fallback=true errorType={}", error.getClass().getSimpleName());
+                                return Mono.just(new RerankStageResult(
+                                        candidates.subList(0, Math.min(candidates.size(), rerankTopK)),
+                                        true,
+                                        error.getClass().getSimpleName()));
                             })
-                            .map(docs -> applyRerankPolicy(docs));
+                            .map(stage -> {
+                                List<Document> finalDocuments = applyRerankPolicy(stage.documents());
+                                int thresholdPassed = stage.fallback()
+                                        ? 0
+                                        : (int) stage.documents().stream()
+                                        .map(this::readRerankScore)
+                                        .filter(score -> score != null && score >= rerankScoreThreshold)
+                                        .count();
+                                log.info("[RAG] rerank traceId={} conversationId={} msgId={} input={} reranked={} threshold={} thresholdPassed={} final={} fallback={}{} elapsedMs={}",
+                                        tag(extraTags, "rag.trace_id"), tag(extraTags, "rag.conversation_id"),
+                                        tag(extraTags, "rag.msg_id"), candidates.size(), stage.documents().size(),
+                                        rerankScoreThreshold, thresholdPassed, finalDocuments.size(), stage.fallback(),
+                                        stage.reason() == null ? "" : " reason=" + stage.reason(),
+                                        System.currentTimeMillis() - rerankStart);
+                                return finalDocuments;
+                            });
                 });
+    }
+
+    private boolean hasNoValidScore(List<Document> documents) {
+        return documents == null || documents.isEmpty()
+                || documents.stream().map(this::readRerankScore).noneMatch(Objects::nonNull);
     }
 
     private List<Document> applyRerankPolicy(List<Document> documents) {
@@ -175,7 +205,8 @@ public class RetrievalPipeline {
     }
 
     // 子块回查父块：将检索命中的子块按 parent_block_id 去重聚合，批量查询 MySQL 获取完整父块上下文
-    private Mono<List<ParentContextBlock>> expandParentContexts(List<Document> childCandidates) {
+    private Mono<List<ParentContextBlock>> expandParentContexts(List<Document> childCandidates,
+                                                                 Map<String, Object> extraTags) {
         if (childCandidates == null || childCandidates.isEmpty()) {
             return Mono.just(List.of());
         }
@@ -201,8 +232,16 @@ public class RetrievalPipeline {
 
         // 批量查询 MySQL，一次取出所有去重后的父块
         List<String> parentBlockIds = new ArrayList<>(byParentId.keySet());
-        return parentBlockService.findByParentBlockIds(parentBlockIds)
-                .map(parentBlocks -> toParentContextBlocks(byParentId, parentBlocks));
+        long expandStart = System.currentTimeMillis();
+        Map<String, Object> expandTags = new java.util.HashMap<>(extraTags == null ? Map.of() : extraTags);
+        expandTags.put("rag.child_count", childCandidates.size());
+        expandTags.put("rag.parent_candidate_count", parentBlockIds.size());
+        return tracingSupport.traceMono("rag.parent_expand", expandTags,
+                        parentBlockService.findByParentBlockIds(parentBlockIds))
+                .map(parentBlocks -> toParentContextBlocks(byParentId, parentBlocks))
+                .doOnNext(parentContexts -> log.info("[RAG] context traceId={} conversationId={} msgId={} children={} parents={} elapsedMs={}",
+                        tag(extraTags, "rag.trace_id"), tag(extraTags, "rag.conversation_id"), tag(extraTags, "rag.msg_id"),
+                        childCandidates.size(), parentContexts.size(), System.currentTimeMillis() - expandStart));
     }
 
     // 将 MySQL 查询结果与累加器合并，校验 schema 版本和 docUuid 一致性
@@ -245,6 +284,19 @@ public class RetrievalPipeline {
 
     private String stringValue(Object value) {
         return value == null ? null : value.toString();
+    }
+
+    private String tag(Map<String, Object> tags, String key) {
+        if (tags == null || tags.get(key) == null) {
+            return "";
+        }
+        return String.valueOf(tags.get(key));
+    }
+
+    private record RerankStageResult(List<Document> documents, boolean fallback, String reason) {
+        private RerankStageResult {
+            documents = documents == null ? List.of() : List.copyOf(documents);
+        }
     }
 
     private record ParentAccumulator(

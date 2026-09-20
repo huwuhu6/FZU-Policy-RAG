@@ -77,16 +77,14 @@ public class RerankService {
                 .map(response -> mapResponse(response, docs, topN))
                 .doOnNext(rerankedDocs -> {
                     long elapsed = System.currentTimeMillis() - startTime;
-                    log.info("Rerank completed in {}ms, returned {} docs", elapsed, rerankedDocs.size());
+                    log.debug("Rerank completed in {}ms, returned {} docs", elapsed, rerankedDocs.size());
                 })
                 .doOnError(e -> {
                     long elapsed = System.currentTimeMillis() - startTime;
                     if (e instanceof TimeoutException) {
-                        log.warn("Rerank timeout after {}ms (limit={}ms), triggering circuit breaker", elapsed,
-                                timeoutMs);
+                        log.warn("Rerank timeout after {}ms limit={}ms", elapsed, timeoutMs);
                     } else {
-                        log.error("Rerank failed after {}ms, triggering circuit breaker: {}", elapsed, e.getMessage(),
-                                e);
+                        log.warn("Rerank failed after {}ms errorType={}", elapsed, e.getClass().getSimpleName());
                     }
                 });
     }
@@ -141,7 +139,8 @@ public class RerankService {
     }
 
     public Mono<List<Document>> rerankFallback(String query, List<Document> docs, int topN, Throwable t) {
-        log.warn("▇▇ Rerank 降级触发 ▇▇ 原因: {} - 仅返回 Top{} 原始检索结果", t.getMessage(), topN);
+        log.warn("[RAG] rerank fallback=true topN={} errorType={}", topN,
+                t == null ? "unknown" : t.getClass().getSimpleName());
 
         if (docs == null || docs.isEmpty()) {
             return Mono.just(List.of());

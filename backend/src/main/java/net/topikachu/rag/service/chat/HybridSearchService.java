@@ -80,7 +80,8 @@ public class HybridSearchService {
                         }
                         return milvusSearchGateway.search(builder.build());
                     })
-                    .doOnError(e -> log.error("Dense search failed. query='{}', searchScope={}", query, searchScope, e))
+                    .doOnError(e -> log.warn("[RAG] dense backend failed errorType={}",
+                            e.getClass().getSimpleName()))
                     .onErrorMap(e -> new RetrievalException("知识库检索失败，请检查向量服务、Milvus 连接或筛选条件后重试。", e));
         }
 
@@ -117,7 +118,8 @@ public class HybridSearchService {
                             .build();
                 })
                 .flatMap(milvusSearchGateway::hybridSearch)
-                .doOnError(e -> log.error("Hybrid search failed. query='{}', searchScope={}", query, searchScope, e))
+                .doOnError(e -> log.warn("[RAG] hybrid backend failed errorType={}",
+                        e.getClass().getSimpleName()))
                 .onErrorMap(e -> new RetrievalException("知识库检索失败，请检查向量服务、Milvus 连接或筛选条件后重试。", e));
     }
 

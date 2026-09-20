@@ -95,12 +95,18 @@ class ReactiveChatGatewayTest {
 
     @Test
     void strictSourcedAnswerRejectsInvalidShape() {
-        assertThrows(IllegalArgumentException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
                 "{\"answer\":\"答案\",\"answerType\":\"unknown\",\"usedSources\":[]}", objectMapper));
-        assertThrows(IllegalArgumentException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
                 "{\"answer\":\"答案\",\"usedSources\":[]}", objectMapper));
-        assertThrows(IllegalArgumentException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
                 "{\"answer\":\"答案\",\"answerType\":\"factual\",\"usedSources\":[],\"extra\":true}", objectMapper));
+    }
+
+    @Test
+    void strictSourcedAnswerRejectsInvalidJsonWithExplicitException() {
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictSourcedAnswer(
+                "{not-json", objectMapper));
     }
 
     @Test

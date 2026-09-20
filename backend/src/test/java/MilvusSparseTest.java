@@ -18,9 +18,15 @@ import java.util.*;
 
 public class MilvusSparseTest {
 
-    // 你的 Milvus 地址
-    private static final String HOST = "192.168.193.128";
-    private static final int PORT = 19530;
+    // 默认连接本机 Docker 暴露的 Milvus；需要远程验证时可通过系统属性或环境变量覆盖。
+    private static final String HOST = System.getProperty(
+            "milvus.test.host",
+            System.getenv().getOrDefault("MILVUS_TEST_HOST", "127.0.0.1")
+    );
+    private static final int PORT = Integer.parseInt(System.getProperty(
+            "milvus.test.port",
+            System.getenv().getOrDefault("MILVUS_TEST_PORT", "19530")
+    ));
 
     @Test
     public void testSparseVectorFlow() {
