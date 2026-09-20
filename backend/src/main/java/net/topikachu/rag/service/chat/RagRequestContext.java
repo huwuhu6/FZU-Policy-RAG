@@ -13,6 +13,8 @@ public record RagRequestContext(
         String modelId,
         long startNanos) {
 
+    private static final int MAX_LOG_TEXT_CHARS = 1000;
+
     public static RagRequestContext create(String traceId,
                                            String conversationId,
                                            String msgId,
@@ -22,6 +24,24 @@ public record RagRequestContext(
 
     public long elapsedMs() {
         return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    /**
+     * Keeps request text readable in one log line without emitting common
+     * credential-shaped values or unbounded user input.
+     */
+    public static String logText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String flattened = text.replaceAll("\\s+", " ").trim();
+        String redacted = flattened.replaceAll(
+                "(?i)(api[_-]?key|token|password|secret|authorization)\\s*[:=]\\s*[^,;\\s]+",
+                "$1=<redacted>");
+        if (redacted.length() <= MAX_LOG_TEXT_CHARS) {
+            return redacted;
+        }
+        return redacted.substring(0, MAX_LOG_TEXT_CHARS) + "…";
     }
 
     public Map<String, Object> traceTags() {

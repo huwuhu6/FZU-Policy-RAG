@@ -1,1 +1,100 @@
-[]
+[
+  {
+    "id": "faq-transfer-frequency",
+    "questions": [
+      "转专业每学年办理几次",
+      "转专业一年可以申请几次",
+      "转专业什么时候可以申请"
+    ],
+    "answer": "转专业每学年办理一次，学生可以在第一学期末或第三学期末自主申请；在学期间只能转一次，包括进入转专业公示名单的情况。",
+    "source": {
+      "objectName": "documents/e97ebdae13854431958c611f57bc6b9c/fzu-undergraduate-major-transfer-policy.txt",
+      "fileName": "fzu-undergraduate-major-transfer-policy.txt",
+      "location": "第五条"
+    }
+  },
+  {
+    "id": "faq-transfer-basic-conditions",
+    "questions": [
+      "转专业需要满足什么条件",
+      "申请转专业的基本条件是什么",
+      "什么情况下可以申请转专业"
+    ],
+    "answer": "学生在学习期间对其他专业有兴趣和专长，或因患病、特殊困难、特别需要无法继续在本专业学习但可在其他专业学习的，可以申请转专业。",
+    "source": {
+      "objectName": "documents/e97ebdae13854431958c611f57bc6b9c/fzu-undergraduate-major-transfer-policy.txt",
+      "fileName": "fzu-undergraduate-major-transfer-policy.txt",
+      "location": "第六条"
+    }
+  },
+  {
+    "id": "faq-transfer-restrictions",
+    "questions": [
+      "哪些学生不能转专业",
+      "转专业有哪些限制",
+      "什么情况不得转专业"
+    ],
+    "answer": "国家有相关规定或录取前与学校有明确约定的、定向生和高水平运动队学生、中外合作办学和闽台高校联合培养人才项目学生、本科三年级（含）以上学生、保留入学资格或学籍或休学期间学生，以及应予以退学或受到开除学籍处分的学生，不得转专业。",
+    "source": {
+      "objectName": "documents/e97ebdae13854431958c611f57bc6b9c/fzu-undergraduate-major-transfer-policy.txt",
+      "fileName": "fzu-undergraduate-major-transfer-policy.txt",
+      "location": "第十一条"
+    }
+  },
+  {
+    "id": "faq-transfer-capacity",
+    "questions": [
+      "转专业人数有什么限制",
+      "大一大二转专业名额是多少",
+      "转专业接收人数比例是多少"
+    ],
+    "answer": "接收大一学生转专业人数原则上不超过该专业入学时实际招生数的10%；接收大二学生转专业人数原则上不超过该专业入学时实际招生数的3%。",
+    "source": {
+      "objectName": "documents/e97ebdae13854431958c611f57bc6b9c/fzu-undergraduate-major-transfer-policy.txt",
+      "fileName": "fzu-undergraduate-major-transfer-policy.txt",
+      "location": "第四条"
+    }
+  },
+  {
+    "id": "faq-transfer-special-restrictions",
+    "questions": [
+      "转专业还有哪些特殊限制",
+      "哪些专业之间不能申请转专业",
+      "转专业的专业范围有什么限制"
+    ],
+    "answer": "有区域招生限制的专业原则上只能在同一生源区域的专业之间申请；资源勘查工程、采矿工程、矿物加工工程三个专业之间可以互转；普通类和艺术类专业之间不能互转；中外合作办学和闽台高校联合培养人才项目的学生不能申请转入相关项目。",
+    "source": {
+      "objectName": "documents/e97ebdae13854431958c611f57bc6b9c/fzu-undergraduate-major-transfer-policy.txt",
+      "fileName": "fzu-undergraduate-major-transfer-policy.txt",
+      "location": "第八条"
+    }
+  },
+  {
+    "id": "faq-transfer-process",
+    "questions": [
+      "转专业申请流程是什么",
+      "申请转专业要经过哪些步骤",
+      "转专业怎么申请"
+    ],
+    "answer": "教务处发布通知，学院制定并公布考核方案，学生网上申请并通过资格审核后打印转专业申请表、提交材料，学院组织考核，学校审核后公布公示名单。",
+    "source": {
+      "objectName": "documents/e97ebdae13854431958c611f57bc6b9c/fzu-undergraduate-major-transfer-policy.txt",
+      "fileName": "fzu-undergraduate-major-transfer-policy.txt",
+      "location": "第十二条至第二十一条"
+    }
+  },
+  {
+    "id": "faq-transfer-effective-cohort",
+    "questions": [
+      "转专业规定从哪一届开始执行",
+      "2024级转专业按哪一版规定",
+      "转专业新规什么时候生效"
+    ],
+    "answer": "本办法自2024级学生开始执行，原《福州大学本科生转专业管理暂行办法》（福大教〔2017〕37号）同时废止。",
+    "source": {
+      "objectName": "documents/e97ebdae13854431958c611f57bc6b9c/fzu-undergraduate-major-transfer-policy.txt",
+      "fileName": "fzu-undergraduate-major-transfer-policy.txt",
+      "location": "第二十三条"
+    }
+  }
+]

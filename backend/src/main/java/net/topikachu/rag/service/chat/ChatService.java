@@ -84,10 +84,15 @@ public class ChatService {
                             traceId,
                             List.of(),
                             List.of());
-                    if (processed.route() == QueryPreProcessor.PreprocessRoute.CHITCHAT
-                            || processed.route() == QueryPreProcessor.PreprocessRoute.FAQ) {
+                    boolean directRoute = switch (processed.route()) {
+                        case EXACT, SMALLTALK, CLARIFY, FAQ -> true;
+                        case RETRIEVE -> false;
+                    };
+                    if (directRoute) {
                         String answerType = processed.route() == QueryPreProcessor.PreprocessRoute.FAQ
                                 ? "faq"
+                                : processed.route() == QueryPreProcessor.PreprocessRoute.CLARIFY
+                                ? "clarify"
                                 : "chitchat";
                         return groundedTurnModule.commitDirectReply(command, processed.directReply(), answerType)
                                 .thenReturn(new ChatStreamResponse(
@@ -133,7 +138,9 @@ public class ChatService {
                               String answerType,
                               int sourceCount) {
         log.info("[RAG] completed traceId={} conversationId={} msgId={} route={} answerType={} sources={} totalMs={}",
-                context.traceId(), context.conversationId(), context.msgId(), route, answerType, sourceCount,
+                context.traceId(), context.conversationId(), context.msgId(),
+                route == QueryPreProcessor.PreprocessRoute.RETRIEVE ? "RAG" : route,
+                answerType, sourceCount,
                 context.elapsedMs());
     }
 

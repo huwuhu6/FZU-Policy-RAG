@@ -163,6 +163,35 @@ public class ReactiveChatGateway {
                 .map(raw -> decodeStrictSourcePlan(raw, objectMapper));
     }
 
+    /**
+     * Buffers only the small structured routing result. The normal answer
+     * path remains a separate true streaming operation.
+     */
+    public Mono<ConversationRouteResult> callBufferedConversationRoute(
+            ChatClient chatClient,
+            String systemText,
+            Map<String, Object> systemParams,
+            List<Message> historyMessages,
+            String userText,
+            String conversationId) {
+        List<Message> messages = new ArrayList<>(historyMessages == null ? List.of() : historyMessages);
+        messages.add(UserMessage.builder().text(userText).build());
+        return tracingSupport.traceFlux("llm.conversation_route_stream_buffered",
+                        Map.of(
+                                "llm.conversation_id", conversationId == null ? "" : conversationId,
+                                "llm.prompt_chars", systemText == null ? 0 : systemText.length(),
+                                "llm.history_messages", historyMessages == null ? 0 : historyMessages.size()),
+                        buildPrompt(chatClient, systemText, systemParams,
+                                        messages, List.of(), List.of(), Map.of())
+                                .options(SourcedAnswerPrompts.conversationRouteOptions())
+                                .stream()
+                                .content())
+                .filter(Objects::nonNull)
+                .collectList()
+                .map(ReactiveChatGateway::joinStreamChunks)
+                .map(raw -> decodeStrictConversationRoute(raw, objectMapper));
+    }
+
     static String joinStreamChunks(List<String> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             return "";
@@ -595,6 +624,47 @@ public class ReactiveChatGateway {
             return new SourcePlanResult(answerType, usedSources);
         } catch (JsonProcessingException error) {
             throw new StructuredAnswerException("Could not parse source plan JSON.", error);
+        }
+    }
+
+    static ConversationRouteResult decodeStrictConversationRoute(String raw, ObjectMapper objectMapper) {
+        if (raw == null || raw.isBlank()) {
+            throw new StructuredAnswerException("LLM returned blank conversation route JSON.");
+        }
+        try {
+            JsonNode root = objectMapper.readTree(raw);
+            if (root == null || !root.isObject()) {
+                throw new StructuredAnswerException("Conversation route must be a JSON object.");
+            }
+            Set<String> allowedFields = Set.of("route", "directReply", "searchTargetQuery");
+            var fields = root.fieldNames();
+            while (fields.hasNext()) {
+                String field = fields.next();
+                if (!allowedFields.contains(field)) {
+                    throw new StructuredAnswerException("Unexpected conversation route field: " + field);
+                }
+            }
+            if (!root.has("route") || !root.has("directReply") || !root.has("searchTargetQuery")) {
+                throw new StructuredAnswerException("Conversation route is missing a required field.");
+            }
+            if (!root.path("route").isTextual()
+                    || !root.path("directReply").isTextual()
+                    || !root.path("searchTargetQuery").isTextual()) {
+                throw new StructuredAnswerException("Conversation route has invalid field types.");
+            }
+            String route = root.path("route").asText();
+            ConversationRouteResult.Route parsedRoute = switch (route) {
+                case "smalltalk" -> ConversationRouteResult.Route.SMALLTALK;
+                case "clarify" -> ConversationRouteResult.Route.CLARIFY;
+                case "retrieve" -> ConversationRouteResult.Route.RETRIEVE;
+                default -> throw new StructuredAnswerException("Conversation route has an invalid route.");
+            };
+            return new ConversationRouteResult(
+                    parsedRoute,
+                    root.path("directReply").asText(),
+                    root.path("searchTargetQuery").asText());
+        } catch (JsonProcessingException error) {
+            throw new StructuredAnswerException("Could not parse conversation route JSON.", error);
         }
     }
 

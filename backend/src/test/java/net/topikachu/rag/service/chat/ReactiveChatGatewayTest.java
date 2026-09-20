@@ -154,6 +154,38 @@ class ReactiveChatGatewayTest {
     }
 
     @Test
+    void strictConversationRouteParsesAllRoutes() {
+        ConversationRouteResult result = ReactiveChatGateway.decodeStrictConversationRoute(
+                "{\"route\":\"retrieve\",\"directReply\":\"\",\"searchTargetQuery\":\"转专业条件\"}",
+                objectMapper);
+
+        assertEquals(ConversationRouteResult.Route.RETRIEVE, result.route());
+        assertEquals("转专业条件", result.searchTargetQuery());
+    }
+
+    @Test
+    void strictConversationRouteRejectsInvalidShape() {
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictConversationRoute(
+                "{\"route\":\"answer\",\"directReply\":\"x\",\"searchTargetQuery\":\"\"}",
+                objectMapper));
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictConversationRoute(
+                "{\"route\":\"smalltalk\",\"directReply\":\"x\"}", objectMapper));
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictConversationRoute(
+                "{\"route\":\"smalltalk\",\"directReply\":\"x\",\"searchTargetQuery\":\"\",\"extra\":true}",
+                objectMapper));
+    }
+
+    @Test
+    void conversationRouteSchemaIsStrictAndClosed() {
+        var responseFormat = SourcedAnswerPrompts.conversationRouteOptions().getResponseFormat();
+
+        assertEquals(ResponseFormat.Type.JSON_SCHEMA, responseFormat.getType());
+        assertEquals("conversation_route", responseFormat.getJsonSchema().getName());
+        assertEquals(true, responseFormat.getJsonSchema().getStrict());
+        assertEquals(false, responseFormat.getJsonSchema().getSchema().get("additionalProperties"));
+    }
+
+    @Test
     void joinsStreamingFragmentsInOrder() {
         String json = ReactiveChatGateway.joinStreamChunks(List.of(
                 "{\"ans", "wer\":\"abc\",", "\"answerType\":\"factual\",",

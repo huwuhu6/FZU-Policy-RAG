@@ -236,3 +236,33 @@ Qwen strategy 显式声明支持 validated streaming；DeepSeek 保留原有 Fun
 ### 验证与当前限制
 
 新增 Source Plan strict decode、SourcePlan evidence 校验、Qwen 多 chunk、完成后持久化、refusal 短路、mid-stream error、SSE 顺序和 DeepSeek 兼容回归测试。定向测试全部通过；`mvn clean compile` 通过；全量测试 187 个中仅剩既有 `ReactiveRefactorGuardTest` 的 Agent/ETL `.block()` 守卫失败，Milvus 定向测试已通过且不再报错。`npm run build` 在正常权限环境通过，仅保留依赖注释和 chunk size 警告。本轮没有把 structured JSON 直接透传给浏览器，也没有修改前端 SSE 协议或 Retrieval/Rerank 算法。
+
+## 2026-09-20｜增加语义会话路由与真实 FAQ 快速路径
+
+### 设计与边界
+
+在标准 `mode=rag` 的检索前增加保守输入归一化和一次 Structured Output 会话路由。归一化只处理首尾空白及连续的末尾问号、感叹号、句号和波浪号，不做子串命中。精确问候、身份和能力别名走确定性直返；其余输入由 `ConversationIntentRouter` 在最近 4 条 User/Assistant 消息范围内选择 `SMALLTALK`、`CLARIFY` 或 `RETRIEVE`，其中 `RETRIEVE` 同时产出上下文消解后的检索 Query。路由模型调用、JSON 解析失败、超时和网络异常均 fail-open 到既有 FAQ/查询重写/RAG 路径，不改变 Retrieval、Rerank、Parent-Child、Source Plan、Evidence Validation 或 Qwen 真流式回答。
+
+FAQ 资源从本地 MinIO 实际对象 `documents/e97ebdae13854431958c611f57bc6b9c/fzu-undergraduate-major-transfer-policy.txt` 读取并核对后，整理为 7 条转专业 FAQ，覆盖办理频次、基本条件、人数比例、特殊限制、不得转专业情形、办理流程和 2024 级生效范围。每条保留 MinIO object、文件名和条款位置审计信息；阈值仍为 `0.95`，Top1/Top2 margin 仍为 `0.03`。FAQ 命中跳过 Milvus 和最终 LLM，但沿用现有直接回复持久化能力。
+
+### 验证与当前限制
+
+`mvn clean compile` 通过；路由、归一化、FAQ matcher、ChatService 和严格 JSON 路由解析定向测试通过。全量测试 193 个中 192 个通过，唯一失败仍为既有 `ReactiveRefactorGuardTest` 扫描到 Agent/ETL 的 `.block()`。本轮未修改这些既有代码。MilvusSparseTest 本次已通过。
+
+后端使用临时 18080 端口启动成功，DashScope Embedding warmup 返回 HTTP 200，Milvus schema 初始化成功；真实聊天请求因本机 MySQL `root` 凭据不匹配而无法登录获取 JWT，未伪造认证或修改数据库配置。未记录或提交任何 API Key、Token 或本地 secret。
+
+## 2026-09-20｜补充用户 Query 与重写 Query 可观测性
+
+### 变更
+
+RAG 请求入口日志补充用户输入，QueryPreProcessor 日志补充原始 Query 与实际检索 Query，便于核对语义路由、FAQ 匹配和上下文重写是否符合预期。日志文本会压平换行、限制长度，并对常见 API Key、Token、Password、Secret 和 Authorization 形式做脱敏；不记录完整 Prompt、Context 或模型原始回答。
+
+### 验证
+
+仅增加日志字段和日志文本处理，不改变检索、重排、引用校验、回答生成或 SSE 行为。定向聊天/来源校验测试在受限 JVM 内存参数下通过。
+
+## 2026-09-20｜调整回答结构与追问风格
+
+最终回答提示词要求先用一句话给出结论，再说明政策依据、适用条件和办理要点；当用户问题缺少必要个人信息时，先回答当前可确定的部分，再在结尾询问必要的补充信息。该调整只影响回答表达，不放宽知识库证据约束、不改变引用校验和 SSE 链路。
+
+补充修复会话路由器内部角色泄露：路由提示词明确要求 `directReply` 使用最终助手身份，后端对“路由器/分类器/Prompt”等内部表述做用户侧兜底替换，并扩充“你是谁啊”等确定性身份问候匹配。

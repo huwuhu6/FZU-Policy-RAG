@@ -59,6 +59,7 @@ public class FaqSemanticMatcher {
             return Mono.just(Match.miss());
         }
 
+        long startNanos = System.nanoTime();
         Map<String, Object> tags = context == null ? Map.of() : context.traceTags();
         return tracingSupport.traceMono("rag.faq_match", tags,
                         index.flatMap(aliases -> {
@@ -68,6 +69,10 @@ public class FaqSemanticMatcher {
                             return embeddingClient.embedDenseQuery(query)
                                     .map(queryVector -> selectMatch(queryVector, aliases));
                         }))
+                .doOnNext(match -> log.info(
+                        "[RAG] faq-match hit={} faqId={} top1Score={} margin={} elapsedMs={}",
+                        match.matched(), match.faqId(), match.top1Score(), match.margin(),
+                        (System.nanoTime() - startNanos) / 1_000_000L))
                 .onErrorResume(error -> {
                     log.warn("[RAG] faq failed fallback=true errorType={}",
                             error.getClass().getSimpleName());
@@ -121,10 +126,12 @@ public class FaqSemanticMatcher {
         ScoredAlias top = ranked.get(0);
         double second = ranked.size() == 1 ? Double.NEGATIVE_INFINITY : ranked.get(1).similarity();
         boolean marginPass = ranked.size() == 1 || top.similarity() - second >= similarityMargin;
+        double margin = ranked.size() == 1 ? Double.POSITIVE_INFINITY : top.similarity() - second;
         if (top.similarity() < similarityThreshold || !marginPass) {
-            return Match.miss();
+            return Match.miss(top.similarity(), margin);
         }
-        return new Match(true, top.alias().faqId(), top.alias().answer(), top.similarity());
+        return new Match(true, top.alias().faqId(), top.alias().answer(), top.similarity(),
+                top.similarity(), margin);
     }
 
     static double cosine(List<Float> left, List<Float> right) {
@@ -147,13 +154,32 @@ public class FaqSemanticMatcher {
         return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
     }
 
-    public record Match(boolean matched, String faqId, String answer, Double similarity) {
+    public record Match(boolean matched,
+                        String faqId,
+                        String answer,
+                        Double similarity,
+                        Double top1Score,
+                        Double margin) {
+        public Match(boolean matched, String faqId, String answer, Double similarity) {
+            this(matched, faqId, answer, similarity, similarity, null);
+        }
+
         public static Match miss() {
-            return new Match(false, null, null, null);
+            return new Match(false, null, null, null, null, null);
+        }
+
+        public static Match miss(Double top1Score, Double margin) {
+            return new Match(false, null, null, null, top1Score, margin);
         }
     }
 
-    public record FaqEntry(String id, List<String> questions, String answer) {
+    public record FaqEntry(String id, List<String> questions, String answer, Source source) {
+        public FaqEntry(String id, List<String> questions, String answer) {
+            this(id, questions, answer, null);
+        }
+    }
+
+    public record Source(String objectName, String fileName, String location) {
     }
 
     private record IndexedAlias(String faqId, String answer, String question, List<Float> vector) {

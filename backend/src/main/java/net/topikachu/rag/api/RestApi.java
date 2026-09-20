@@ -8,6 +8,7 @@ import net.topikachu.rag.auth.SearchScope;
 import net.topikachu.rag.business.document.service.DocumentService;
 import net.topikachu.rag.observability.TracingSupport;
 import net.topikachu.rag.service.chat.ChatService;
+import net.topikachu.rag.service.chat.RagRequestContext;
 import net.topikachu.rag.service.chat.SourceValidationException;
 import net.topikachu.rag.service.etl.EtlPipeline;
 import lombok.RequiredArgsConstructor;
@@ -94,9 +95,10 @@ public class RestApi {
 									msgId);
 						}
 
-						log.info("[RAG] start traceId={} conversationId={} msgId={} model={} inputChars={} spaces={} tagCount={}",
+						log.info("[RAG] start traceId={} conversationId={} msgId={} model={} inputChars={} input={} spaces={} tagCount={}",
 								tracingSupport.getCurrentTraceId(), conversationKey, msgId, chatRequest.modelId(),
 								chatRequest.userInput() == null ? 0 : chatRequest.userInput().length(),
+								RagRequestContext.logText(chatRequest.userInput()),
 								searchScope == null ? 0 : searchScope.requestedSpaceCodes().size(),
 								searchScope == null ? 0 : searchScope.requestedTags().size());
 

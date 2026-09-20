@@ -14,7 +14,8 @@ import java.util.Map;
 @Slf4j
 public class UsedSourceValidator {
 
-    public static final String UNRELIABLE_SOURCE_MESSAGE = "根据当前知识库，暂未找到合理解答。";
+    public static final String UNRELIABLE_SOURCE_MESSAGE =
+            "当前知识库暂未找到可直接引用的可靠答案。建议前往福州大学教务处官网查询最新政策，或咨询辅导员、教务老师获取准确信息。";
     public static final String REASON_ANSWER_MISSING = "answer_missing";
     public static final String REASON_USED_SOURCES_EMPTY = "used_sources_empty";
     public static final String REASON_EVIDENCE_ID_MISSING = "evidence_id_missing";
