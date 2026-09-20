@@ -15,9 +15,10 @@ import java.util.Map;
 public class UsedSourceValidator {
 
     public static final String UNRELIABLE_SOURCE_MESSAGE =
-            "当前知识库暂未找到可直接引用的可靠答案。建议前往福州大学教务处官网查询最新政策，或咨询辅导员、教务老师获取准确信息。";
+            "当前知识库为福州大学教务规章规程库，暂未收录该问题的相关条款或数据（如涉及行业就业前景、主观评价或具体学院未公开事项，建议咨询学院教学办、辅导员或关注教务处最新动态）。";
     public static final String REASON_ANSWER_MISSING = "answer_missing";
     public static final String REASON_USED_SOURCES_EMPTY = "used_sources_empty";
+    public static final String REASON_FACTUAL_WITHOUT_SOURCES = "factual_without_sources";
     public static final String REASON_EVIDENCE_ID_MISSING = "evidence_id_missing";
     public static final String REASON_EVIDENCE_ID_NOT_IN_CANDIDATES = "evidence_id_not_in_candidates";
     public static final String REASON_INVALID_ANSWER_TYPE = "invalid_answer_type";
@@ -32,6 +33,10 @@ public class UsedSourceValidator {
             throw validationFailure(REASON_ANSWER_MISSING, null, candidates);
         }
 
+        if ("factual".equalsIgnoreCase(result.answerType())
+                && (result.usedSources() == null || result.usedSources().isEmpty())) {
+            throw validationFailure(REASON_USED_SOURCES_EMPTY, result, candidates);
+        }
         ValidatedSourcePlan validatedPlan = validateSourcePlan(
                 new SourcePlanResult(result.answerType(), result.usedSources()), candidates);
         return validatedPlan.usedSources();
@@ -54,7 +59,9 @@ public class UsedSourceValidator {
             return new ValidatedSourcePlan("refusal", List.of(), List.of());
         }
         if (requestedSources.isEmpty()) {
-            throw validationFailure(REASON_USED_SOURCES_EMPTY, plan, candidates);
+            log.warn("Used source validation downgraded factual source plan to refusal: reason={}, candidateCount={}",
+                    REASON_FACTUAL_WITHOUT_SOURCES, candidates == null ? 0 : candidates.size());
+            return new ValidatedSourcePlan("refusal", List.of(), List.of());
         }
 
         Map<String, Document> candidatesByEvidenceId = candidatesByEvidenceId(candidates);
@@ -91,12 +98,14 @@ public class UsedSourceValidator {
 
     private UsedSource fromDocument(Document document) {
         Map<String, Object> metadata = document.getMetadata();
+        String rawFileName = stringValue(metadata.get("file_name"));
         return new UsedSource(
                 evidenceId(document),
                 stringValue(metadata.get("doc_uuid")),
-                stringValue(metadata.get("file_name")),
-                sourceLocation(metadata),
-                fileType(stringValue(metadata.get("file_name"))));
+                cleanFileName(rawFileName),
+                pageNumber(metadata),
+                fileType(rawFileName),
+                sourceLocation(metadata));
     }
 
     // 同文档同位置的多个 evidence_id 只保留第一条（去重合并展示，避免溯源列表冗余）
@@ -106,7 +115,10 @@ public class UsedSourceValidator {
             if (source == null || !StringUtils.hasText(source.docUuid())) {
                 continue;
             }
-            String key = source.docUuid() + "|" + (source.pageNumber() == null ? "" : source.pageNumber());
+            String position = source.pageNumber() != null
+                    ? source.pageNumber().toString()
+                    : source.location() == null ? "" : source.location();
+            String key = source.docUuid() + "|" + position;
             unique.putIfAbsent(key, source);
         }
         return List.copyOf(unique.values());
@@ -127,35 +139,52 @@ public class UsedSourceValidator {
         return value == null ? null : value.toString();
     }
 
-    // 解析溯源展示位置：source_location > page_start/page_end > parent_index
-    // ① 显式 source_location（DOCX/MD 面包屑，如"学生纪律 > 开除程序"）
-    // ② page_start/page_end（PDF 页码范围，如"3-4"或"5"）
-    // ③ parent_index → "片段N"（无标题结构的非 PDF 文档）
-    private Object sourceLocation(Map<String, Object> metadata) {
-        // ① 优先：语义化溯源路径（DOCX/MD 策略写入的面包屑）
+    // 页码只接受明确的数字字段，避免把 DOCX/MD 的章节路径误放进 page_number。
+    private Object pageNumber(Map<String, Object> metadata) {
+        Integer start = numericPage(metadata.get("page_start"));
+        Integer end = numericPage(metadata.get("page_end"));
+        if (start != null && end != null) {
+            return start.equals(end) ? start : start + "-" + end;
+        }
+        return numericPage(metadata.get("page_number"));
+    }
+
+    // 章节路径或片段标签单独作为 location 返回，不再复用 page_number。
+    private String sourceLocation(Map<String, Object> metadata) {
         Object sourceLocation = metadata.get("source_location");
         if (sourceLocation != null && StringUtils.hasText(sourceLocation.toString())) {
             return sourceLocation.toString().trim();
         }
-        // ② 次选：PDF 页码范围
-        Object pageStart = metadata.get("page_start");
-        Object pageEnd = metadata.get("page_end");
-        if (pageStart != null && pageEnd != null) {
-            String start = pageStart.toString();
-            String end = pageEnd.toString();
-            // 单页 → 直接返回页码，跨页 → 返回"起始-结束"范围
-            return start.equals(end) ? pageStart : start + "-" + end;
-        }
-        Object pageNumber = metadata.get("page_number");
-        if (pageNumber != null) {
-            return pageNumber;
-        }
-        // ③ 再次：通用 parent_index → "片段N"
         Object parentIndex = metadata.get("parent_index");
         if (parentIndex != null) {
             return "片段" + parentIndex;
         }
         return null;
+    }
+
+    private Integer numericPage(Object value) {
+        if (value instanceof Number number) {
+            double numeric = number.doubleValue();
+            if (Double.isFinite(numeric) && numeric >= 0 && Math.rint(numeric) == numeric) {
+                return (int) numeric;
+            }
+            return null;
+        }
+        if (value != null && value.toString().trim().matches("\\d+")) {
+            try {
+                return Integer.valueOf(value.toString().trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private String cleanFileName(String fileName) {
+        if (!StringUtils.hasText(fileName)) {
+            return fileName;
+        }
+        return fileName.replaceFirst("(?i)\\.(md|markdown|pdf|docx|txt)$", "");
     }
 
     private String fileType(String fileName) {

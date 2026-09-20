@@ -315,7 +315,8 @@ interface SourceMeta {
   file_name?: string;
   source?: string;
   doc_uuid?: string;
-  page_number?: number;
+  page_number?: number | string;
+  location?: string;
 }
 
 interface AgentTraceLog {
@@ -418,8 +419,14 @@ const handleThreadScroll = () => {
     const container = chatThreadRef.value;
     if (!container) return;
 
-    userScrolledUp.value =
-        container.scrollHeight - container.scrollTop - container.clientHeight > 80;
+    const distanceToBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+
+    if (distanceToBottom <= 20) {
+      userScrolledUp.value = false;
+    } else {
+      userScrolledUp.value = true;
+    }
 };
 
 const handleThreadWheel = (event: WheelEvent) => {
@@ -434,7 +441,9 @@ const scrollBottom = (force = false) => {
         if (!container || (!force && userScrolledUp.value)) return;
 
         container.scrollTop = container.scrollHeight;
-        userScrolledUp.value = false;
+        if (force) {
+          userScrolledUp.value = false;
+        }
     });
 };
 
@@ -442,12 +451,17 @@ const scrollBottom = (force = false) => {
 const formatSourceReference = (source: any) => {
   const docUuid = source.doc_uuid || source.docUuid;
   const title = docUuid ? (source.file_name || source.fileName || source.source || t("chat.document")) : t("chat.unknownSource");
-  const page = source.page_number || source.pageNumber;
-  if (page) {
-    if (isSegmentLocation(page)) {
-      return t("chat.sourceReferenceWithSegment", { title, segment: String(page) });
+  const page = source.page_number ?? source.pageNumber;
+  const numericPage = normalizePageReference(page);
+  if (numericPage) {
+    return t("chat.sourceReferenceWithPage", { title, page: numericPage });
+  }
+  const location = source.location || source.source_location || (isLocationText(page) ? String(page) : "");
+  if (location) {
+    if (isSegmentLocation(location)) {
+      return t("chat.sourceReferenceWithSegment", { title, segment: location });
     }
-    return t("chat.sourceReferenceWithPage", { title, page: formatPageValue(page) });
+    return t("chat.sourceReferenceWithLocation", { title, location });
   }
   return t("chat.sourceReferenceWithoutPage", { title });
 };
@@ -457,9 +471,9 @@ const openSource = async (source: SourceMeta) => {
   const docUuid = source.doc_uuid || source.docUuid;
   if (!docUuid) return;
   try {
-    const page = source.page_number ?? source.pageNumber;
-    // 片段标签无法定位到具体页面，不带 page hash
-    await openDocPreview(String(docUuid), isSegmentLocation(page) ? undefined : page);
+    const page = normalizePageReference(source.page_number ?? source.pageNumber);
+    // 章节路径/片段标签无法定位到具体页面，不带 page hash
+    await openDocPreview(String(docUuid), page);
   } catch (e) {
     console.error(e);
     ElMessage.error(t("chat.previewFailed"));
@@ -618,6 +632,20 @@ const modelNameFor = (modelId: string) => {
   };
   return modelNameMap[modelId] || modelId;
 };
+
+const normalizePageReference = (page: unknown): string | null => {
+  if (typeof page === "number" && Number.isInteger(page) && page >= 0) {
+    return String(page);
+  }
+  if (typeof page === "string") {
+    const value = page.trim();
+    if (/^\d+$/.test(value)) return value;
+    if (/^\d+\s*-\s*\d+$/.test(value)) return value.replace(/\s+/g, "");
+  }
+  return null;
+};
+
+const isLocationText = (value: unknown) => typeof value === "string" && value.trim().length > 0;
 
 const dedupeSources = (rawSources: SourceMeta[]) => {
   const uniqueSources: SourceMeta[] = [];
@@ -986,6 +1014,8 @@ const logout = () => {
   min-width: 0;
   min-height: 0;
   height: 100%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   position: relative;
 }
@@ -1146,27 +1176,29 @@ const logout = () => {
 
 /* --- Active State --- */
 .chat-thread {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 40px 0 100px 0; /* Box bottom padding for input space */
+  padding: 24px 0;
   display: flex;
   flex-direction: column;
-  align-items: center; 
+  align-items: center;
+  justify-content: flex-start;
   scroll-behavior: auto;
   background: transparent;
   border: none;
+  border-radius: 0;
   box-shadow: none;
 }
 
 .chat-input-bottom {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 20px;
-  padding-bottom: 30px;
+  position: relative;
+  flex: 0 0 auto;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  padding: 16px 20px 24px;
   background: linear-gradient(180deg, var(--chat-thread-bg) 0%, var(--chat-thread-bg) 40%);
   display: flex;
   justify-content: center;

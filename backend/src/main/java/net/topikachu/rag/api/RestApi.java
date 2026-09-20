@@ -118,6 +118,7 @@ public class RestApi {
 									item.put("file_name", source.fileName());
 									item.put("page_number", source.pageNumber());
 									item.put("file_type", source.fileType());
+									item.put("location", source.location());
 									return item;
 								})
 								.collect(Collectors.toList());

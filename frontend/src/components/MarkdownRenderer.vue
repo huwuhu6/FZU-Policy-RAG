@@ -63,9 +63,12 @@ md.core.ruler.push('citations', (state) => {
           children[citeMatch.index].content = citeMatch.text.substring(0, match.index) + (hadPeriod ? '。' : '');
 
           const matchedSource = sources.find(s => {
-            const sFile = s.file_name || s.fileName || s.source || '';
+            const sFile = normalizeSourceTitle(s.file_name || s.fileName || s.source || '');
+            const citedFile = normalizeSourceTitle(filename);
             const sPage = String(s.page_number ?? s.pageNumber ?? '');
-            return sFile.includes(filename) && (sPage === pageNum || sPage.includes(pageNum));
+            const sLocation = String(s.location || s.source_location || '');
+            return sFile.includes(citedFile)
+              && (sPage === pageNum || sPage.includes(pageNum) || sLocation === pageNum || sLocation.includes(`片段${pageNum}`));
           });
 
           const docUuid = matchedSource ? (matchedSource.doc_uuid || matchedSource.docUuid) : '';
@@ -74,7 +77,10 @@ md.core.ruler.push('citations', (state) => {
           token.attrPush(['data-tooltip', fullCite]);
           if (docUuid) {
             token.attrPush(['data-doc-uuid', docUuid]);
-            token.attrPush(['data-page', pageNum]);
+            // “片段N”是章节/分块位置，不是 PDF 页码，不能用于 page hash 定位。
+            if (match[3]) {
+              token.attrPush(['data-page', match[3]]);
+            }
           }
         }
       }
@@ -128,7 +134,7 @@ const handleClick = async (event: MouseEvent) => {
     if (docUuid) {
       emit('source-click', {
         docUuid: docUuid,
-        pageNumber: pageNumber ? Number(pageNumber) : undefined
+        pageNumber: pageNumber && /^\d+$/.test(pageNumber) ? Number(pageNumber) : undefined
       });
       return;
     }
@@ -155,6 +161,8 @@ const handleClick = async (event: MouseEvent) => {
     }
   }
 };
+
+const normalizeSourceTitle = (value: unknown) => String(value || '').replace(/\.(md|markdown|pdf|docx|txt)$/i, '');
 </script>
 
 <style>

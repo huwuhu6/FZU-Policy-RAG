@@ -30,7 +30,7 @@ class UsedSourceValidatorTest {
         assertEquals(1, usedSources.size());
         assertEquals("ev-1", usedSources.get(0).evidenceId());
         assertEquals("doc-1", usedSources.get(0).docUuid());
-        assertEquals("handbook.pdf", usedSources.get(0).fileName());
+        assertEquals("handbook", usedSources.get(0).fileName());
         assertEquals(3, usedSources.get(0).pageNumber());
     }
 
@@ -119,11 +119,12 @@ class UsedSourceValidatorTest {
         List<UsedSource> usedSources = validator.validate(result, List.of(first, second));
 
         assertEquals(1, usedSources.size());
-        assertEquals("片段4", usedSources.get(0).pageNumber());
+        assertEquals(null, usedSources.get(0).pageNumber());
+        assertEquals("片段4", usedSources.get(0).location());
     }
 
     @Test
-    void prefersExplicitSourceLocation() {
+    void keepsExplicitSourceLocationSeparateFromPageNumber() {
         Document candidate = new Document("content", Map.of(
                 "evidence_id", "ev-1",
                 "doc_uuid", "doc-1",
@@ -134,7 +135,8 @@ class UsedSourceValidatorTest {
 
         List<UsedSource> usedSources = validator.validate(result, List.of(candidate));
 
-        assertEquals("学生纪律 > 开除程序", usedSources.get(0).pageNumber());
+        assertEquals(null, usedSources.get(0).pageNumber());
+        assertEquals("学生纪律 > 开除程序", usedSources.get(0).location());
     }
 
     @Test
@@ -211,6 +213,16 @@ class UsedSourceValidatorTest {
     void validatesRefusalSourcePlanWithoutAnswerText() {
         UsedSourceValidator.ValidatedSourcePlan validated = validator.validateSourcePlan(
                 new SourcePlanResult("refusal", List.of()), List.of());
+
+        assertEquals("refusal", validated.answerType());
+        assertEquals(List.of(), validated.evidenceIds());
+        assertEquals(List.of(), validated.usedSources());
+    }
+
+    @Test
+    void downgradesFactualSourcePlanWithoutSourcesToRefusal() {
+        UsedSourceValidator.ValidatedSourcePlan validated = validator.validateSourcePlan(
+                new SourcePlanResult("factual", List.of()), List.of(candidate("ev-1", "doc-1", "policy.pdf")));
 
         assertEquals("refusal", validated.answerType());
         assertEquals(List.of(), validated.evidenceIds());

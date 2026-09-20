@@ -14,6 +14,14 @@ public record UsedSource(
         @JsonAlias("page_number")
         Object pageNumber,
         @JsonAlias({"file_type", "mime_type", "mimeType"})
-        String fileType
+        String fileType,
+        String location
 ) {
+    public UsedSource(String evidenceId,
+                      String docUuid,
+                      String fileName,
+                      Object pageNumber,
+                      String fileType) {
+        this(evidenceId, docUuid, fileName, pageNumber, fileType, null);
+    }
 }
