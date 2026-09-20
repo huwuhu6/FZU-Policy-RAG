@@ -107,7 +107,7 @@ public class ChatService {
                                     hybridTopK,
                                     rerankTopK,
                                     retrievalTags)
-                            .flatMap(retrievalResult -> groundedTurnModule.execute(new GroundedTurnModule.Command(
+                            .flatMap(retrievalResult -> groundedTurnModule.stream(new GroundedTurnModule.Command(
                                     userInput,
                                     conversationId,
                                     currentUserContext.userId(),
@@ -117,10 +117,14 @@ public class ChatService {
                                     traceId,
                                     retrievalResult.childCandidates(),
                                     retrievalResult.parentContexts())))
-                            .map(result -> {
-                                logCompleted(requestContext, processed.route(), result.answerType(), result.usedSources().size());
-                                return new ChatStreamResponse(Flux.just(result.answer()), result.usedSources());
-                            });
+                            .map(result -> new ChatStreamResponse(
+                                    result.answerFlux()
+                                            .doOnComplete(() -> logCompleted(
+                                                    requestContext,
+                                                    processed.route(),
+                                                    result.answerType(),
+                                                    result.usedSources().size())),
+                                    result.usedSources()));
                 });
     }
 

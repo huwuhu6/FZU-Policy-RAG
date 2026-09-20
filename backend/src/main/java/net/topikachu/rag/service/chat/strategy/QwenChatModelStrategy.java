@@ -25,4 +25,9 @@ public class QwenChatModelStrategy implements ChatModelStrategy {
     public ChatClient getChatClient() {
         return this.chatClient;
     }
+
+    @Override
+    public boolean supportsValidatedAnswerStreaming() {
+        return true;
+    }
 }

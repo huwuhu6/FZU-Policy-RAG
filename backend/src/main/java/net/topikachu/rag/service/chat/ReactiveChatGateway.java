@@ -133,6 +133,36 @@ public class ReactiveChatGateway {
                 .map(raw -> decodeStrictSourcedAnswer(raw, objectMapper));
     }
 
+    /**
+     * Phase A: ask the model only for the answer type and selected evidence
+     * ids. The structured response is buffered and strictly decoded before
+     * any answer text is exposed to the caller.
+     */
+    public Mono<SourcePlanResult> callBufferedSourcePlan(
+            ChatClient chatClient,
+            String systemText,
+            Map<String, Object> systemParams,
+            List<Message> historyMessages,
+            String userText,
+            String conversationId) {
+        List<Message> messages = new ArrayList<>(historyMessages == null ? List.of() : historyMessages);
+        messages.add(UserMessage.builder().text(userText).build());
+        return tracingSupport.traceFlux("llm.source_plan_stream_buffered",
+                        Map.of(
+                                "llm.conversation_id", conversationId == null ? "" : conversationId,
+                                "llm.prompt_chars", systemText == null ? 0 : systemText.length(),
+                                "llm.history_messages", historyMessages == null ? 0 : historyMessages.size()),
+                        buildPrompt(chatClient, systemText, systemParams,
+                                        messages, List.of(), List.of(), Map.of())
+                                .options(SourcedAnswerPrompts.sourcePlanOptions())
+                                .stream()
+                                .content())
+                .filter(Objects::nonNull)
+                .collectList()
+                .map(ReactiveChatGateway::joinStreamChunks)
+                .map(raw -> decodeStrictSourcePlan(raw, objectMapper));
+    }
+
     static String joinStreamChunks(List<String> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             return "";
@@ -256,6 +286,25 @@ public class ReactiveChatGateway {
                         "llm.prompt_chars", systemText == null ? 0 : systemText.length(),
                         "llm.user_chars", userText == null ? 0 : userText.length()),
                 buildPrompt(chatClient, systemText, systemParams, userText, conversationId, chatMemoryAdvisor)
+                        .stream()
+                        .content());
+    }
+
+    public Flux<String> stream(ChatClient chatClient,
+                               String systemText,
+                               Map<String, Object> systemParams,
+                               List<Message> historyMessages,
+                               String userText,
+                               String conversationId) {
+        List<Message> messages = new ArrayList<>(historyMessages == null ? List.of() : historyMessages);
+        messages.add(UserMessage.builder().text(userText).build());
+        return tracingSupport.traceFlux("llm.grounded_answer_stream",
+                Map.of(
+                        "llm.conversation_id", conversationId == null ? "" : conversationId,
+                        "llm.prompt_chars", systemText == null ? 0 : systemText.length(),
+                        "llm.history_messages", historyMessages == null ? 0 : historyMessages.size()),
+                buildPrompt(chatClient, systemText, systemParams,
+                                messages, List.of(), List.of(), Map.of())
                         .stream()
                         .content());
     }
@@ -506,6 +555,46 @@ public class ReactiveChatGateway {
             return objectMapper.readValue(raw, SourcedAnswerResult.class);
         } catch (JsonProcessingException error) {
             throw new StructuredAnswerException("Could not parse sourced answer JSON.", error);
+        }
+    }
+
+    static SourcePlanResult decodeStrictSourcePlan(String raw, ObjectMapper objectMapper) {
+        if (raw == null || raw.isBlank()) {
+            throw new StructuredAnswerException("LLM returned blank source plan JSON.");
+        }
+        try {
+            JsonNode root = objectMapper.readTree(raw);
+            if (root == null || !root.isObject()) {
+                throw new StructuredAnswerException("Source plan must be a JSON object.");
+            }
+            Set<String> allowedFields = Set.of("answerType", "usedSources");
+            var fields = root.fieldNames();
+            while (fields.hasNext()) {
+                String field = fields.next();
+                if (!allowedFields.contains(field)) {
+                    throw new StructuredAnswerException("Unexpected source plan field: " + field);
+                }
+            }
+            if (!root.has("answerType") || !root.has("usedSources")) {
+                throw new StructuredAnswerException("Source plan is missing a required field.");
+            }
+            if (!root.path("answerType").isTextual() || !root.path("usedSources").isArray()) {
+                throw new StructuredAnswerException("Source plan has invalid field types.");
+            }
+            String answerType = root.path("answerType").asText();
+            if (!"factual".equals(answerType) && !"refusal".equals(answerType)) {
+                throw new StructuredAnswerException("Source plan has an invalid answerType.");
+            }
+            List<String> usedSources = new ArrayList<>();
+            for (JsonNode source : root.path("usedSources")) {
+                if (!source.isTextual()) {
+                    throw new StructuredAnswerException("Source plan usedSources must contain only strings.");
+                }
+                usedSources.add(source.asText());
+            }
+            return new SourcePlanResult(answerType, usedSources);
+        } catch (JsonProcessingException error) {
+            throw new StructuredAnswerException("Could not parse source plan JSON.", error);
         }
     }
 

@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.document.Document;
 import org.springframework.test.util.ReflectionTestUtils;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -79,8 +80,9 @@ class ChatServiceGroundedTurnTest {
         when(retrievalPipeline.retrieveWithParentContexts(
                 eq("rewritten question"), eq(user), eq(SearchScope.empty()), eq(20), eq(10), anyMap()))
                 .thenReturn(Mono.just(new RetrievalResult(List.of(candidate), List.of(parent))));
-        when(groundedTurnModule.execute(any()))
-                .thenReturn(Mono.just(new GroundedTurnModule.Result("answer", "factual", List.of(usedSource))));
+        when(groundedTurnModule.stream(any()))
+                .thenReturn(Mono.just(new GroundedTurnModule.StreamResult(
+                        Flux.just("answer"), "factual", List.of(usedSource))));
 
         ChatService.ChatStreamResponse response = service.streamWithSources(
                         "question", "conversation-1", user, SearchScope.empty(), "model-1", "msg-1")
@@ -89,7 +91,7 @@ class ChatServiceGroundedTurnTest {
         assertEquals(List.of("answer"), response.flux().collectList().block());
         assertEquals(List.of(usedSource), response.usedSources());
         ArgumentCaptor<GroundedTurnModule.Command> commandCaptor = ArgumentCaptor.forClass(GroundedTurnModule.Command.class);
-        verify(groundedTurnModule).execute(commandCaptor.capture());
+        verify(groundedTurnModule).stream(commandCaptor.capture());
         assertEquals("rag", commandCaptor.getValue().mode());
         assertEquals(List.of(candidate), commandCaptor.getValue().candidateEvidence());
         assertEquals(List.of(parent), commandCaptor.getValue().parentContexts());

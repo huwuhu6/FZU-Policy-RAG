@@ -712,7 +712,9 @@ const dispatch = (action: ChatAction) => {
       return;
     case "REQUEST_COMPLETED":
       updateMessageById(action.payload.msgId, (msg) => {
-        msg.status = "done";
+        if (msg.status !== "error") {
+          msg.status = "done";
+        }
         if (msg.agentTrace) {
           msg.agentTrace.currentStage = "done";
         }

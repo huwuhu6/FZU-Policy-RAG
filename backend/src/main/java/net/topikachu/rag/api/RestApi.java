@@ -22,6 +22,7 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import java.io.Serializable;
@@ -73,8 +74,9 @@ public class RestApi {
 			String msgId = StringUtils.hasText(chatRequest.msgId()) ? chatRequest.msgId() : ("msg-" + System.currentTimeMillis());
 			return documentService.resolveEffectiveSearchScope(currentUserContext, requestedScope)
 					.flatMapMany(searchScope -> {
-						tagCurrentChatTrace(principal.getName(), conversationId, conversationKey, mode, chatRequest.modelId(),
+						 tagCurrentChatTrace(principal.getName(), conversationId, conversationKey, mode, chatRequest.modelId(),
 								locustRunId, questionId, questionBucket, searchScope);
+						AtomicBoolean messageStarted = new AtomicBoolean();
 
 						if (!agentEnabled && "agent".equalsIgnoreCase(mode)) {
 							log.warn("Agent mode requested while disabled. conversationId={}, user={}", conversationId, principal.getName());
@@ -124,14 +126,27 @@ public class RestApi {
 								.build();
 
 						Flux<ServerSentEvent<Object>> messageStream = response.flux()
+							.doOnNext(content -> {
+								if (StringUtils.hasText(content)) {
+									messageStarted.set(true);
+								}
+							})
 								.map(content -> ServerSentEvent.builder()
 										.event("message")
 										.data((Object) content)
-										.build());
+																.build());
 
-						return Flux.concat(Flux.just(sourceEvent), messageStream, Flux.just(doneEvent(msgId)));
+							return Flux.concat(Flux.just(sourceEvent), messageStream, Flux.just(doneEvent(msgId)));
 					})
 					.onErrorResume(exp -> {
+						if (messageStarted.get()) {
+							log.warn("[RAG] answer stream interrupted after output traceId={} conversationId={} msgId={} errorType={}",
+								tracingSupport.getCurrentTraceId(), conversationKey, msgId,
+								exp.getClass().getSimpleName());
+							return Flux.just(
+									errorEvent(msgId, "回答生成中断，请重试。"),
+								doneEvent(msgId));
+						}
 						String message = "系统繁忙，请稍后重试。";
 						if (exp instanceof net.topikachu.rag.service.chat.RetrievalException retrievalException) {
 							message = retrievalException.getUserMessage();

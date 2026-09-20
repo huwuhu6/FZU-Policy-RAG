@@ -21,6 +21,7 @@ public class UsedSourceValidator {
     public static final String REASON_EVIDENCE_ID_NOT_IN_CANDIDATES = "evidence_id_not_in_candidates";
     public static final String REASON_INVALID_ANSWER_TYPE = "invalid_answer_type";
     public static final String REASON_REFUSAL_SOURCES_NOT_EMPTY = "refusal_sources_not_empty";
+    public static final String REASON_PARENT_CONTEXT_MISSING = "validated_sources_not_in_parent_context";
 
     // 验证 LLM 回答中的引用：确保每个 usedSources 中的 evidence_id 都在候选文档中存在
     // 验证失败 → 抛异常，回答被拒绝，返回"无法可靠生成带溯源的答案"
@@ -30,26 +31,53 @@ public class UsedSourceValidator {
             throw validationFailure(REASON_ANSWER_MISSING, null, candidates);
         }
 
-        // 2. answerType 只能是 factual 或 refusal
-        boolean refusal = "refusal".equalsIgnoreCase(result.answerType());
-        boolean factual = "factual".equalsIgnoreCase(result.answerType());
-        if (!refusal && !factual) {
-            throw validationFailure(REASON_INVALID_ANSWER_TYPE, result, candidates);
+        ValidatedSourcePlan validatedPlan = validateSourcePlan(
+                new SourcePlanResult(result.answerType(), result.usedSources()), candidates);
+        return validatedPlan.usedSources();
+    }
+
+    public ValidatedSourcePlan validateSourcePlan(SourcePlanResult plan, List<Document> candidates) {
+        if (plan == null) {
+            throw validationFailure(REASON_INVALID_ANSWER_TYPE, null, candidates);
         }
-        List<String> requestedSources = result.usedSources() == null ? List.of() : result.usedSources();
-        // 3. refusal 不允许带引用，防止静默丢弃模型返回的错误来源
+        boolean refusal = "refusal".equalsIgnoreCase(plan.answerType());
+        boolean factual = "factual".equalsIgnoreCase(plan.answerType());
+        if (!refusal && !factual) {
+            throw validationFailure(REASON_INVALID_ANSWER_TYPE, plan, candidates);
+        }
+        List<String> requestedSources = plan.usedSources() == null ? List.of() : plan.usedSources();
         if (refusal) {
             if (!requestedSources.isEmpty()) {
-                throw validationFailure(REASON_REFUSAL_SOURCES_NOT_EMPTY, result, candidates);
+                throw validationFailure(REASON_REFUSAL_SOURCES_NOT_EMPTY, plan, candidates);
             }
-            return List.of();
+            return new ValidatedSourcePlan("refusal", List.of(), List.of());
         }
-        // 4. factual 必须有至少一个引用
         if (requestedSources.isEmpty()) {
-            throw validationFailure(REASON_USED_SOURCES_EMPTY, result, candidates);
+            throw validationFailure(REASON_USED_SOURCES_EMPTY, plan, candidates);
         }
 
-        // 5. 将候选文档按 evidence_id 建索引，O(1) 查找
+        Map<String, Document> candidatesByEvidenceId = candidatesByEvidenceId(candidates);
+        List<UsedSource> validated = new ArrayList<>();
+        List<String> evidenceIds = new ArrayList<>();
+        for (String requestedEvidenceId : requestedSources) {
+            if (!StringUtils.hasText(requestedEvidenceId)) {
+                throw validationFailure(REASON_EVIDENCE_ID_MISSING, plan, candidates);
+            }
+            String normalizedEvidenceId = requestedEvidenceId.trim();
+            Document candidate = candidatesByEvidenceId.get(normalizedEvidenceId);
+            if (candidate == null) {
+                throw validationFailure(REASON_EVIDENCE_ID_NOT_IN_CANDIDATES, plan, candidates);
+            }
+            evidenceIds.add(normalizedEvidenceId);
+            validated.add(fromDocument(candidate));
+        }
+        return new ValidatedSourcePlan(
+                "factual",
+                List.copyOf(evidenceIds),
+                collapseDisplayedSources(validated));
+    }
+
+    private Map<String, Document> candidatesByEvidenceId(List<Document> candidates) {
         Map<String, Document> candidatesByEvidenceId = new LinkedHashMap<>();
         for (Document candidate : candidates == null ? List.<Document>of() : candidates) {
             String evidenceId = evidenceId(candidate);
@@ -57,23 +85,7 @@ public class UsedSourceValidator {
                 candidatesByEvidenceId.put(evidenceId, candidate);
             }
         }
-
-        // 6. 逐个验证 LLM 声明的 evidence_id 是否在候选集合中
-        List<UsedSource> validated = new ArrayList<>();
-        for (String requestedEvidenceId : requestedSources) {
-            // evidence_id 不能为空
-            if (!StringUtils.hasText(requestedEvidenceId)) {
-                throw validationFailure(REASON_EVIDENCE_ID_MISSING, result, candidates);
-            }
-            // evidence_id 必须在候选文档中存在（杜绝 LLM 幻觉引用）
-            Document candidate = candidatesByEvidenceId.get(requestedEvidenceId.trim());
-            if (candidate == null) {
-                throw validationFailure(REASON_EVIDENCE_ID_NOT_IN_CANDIDATES, result, candidates);
-            }
-            validated.add(fromDocument(candidate));
-        }
-        // 7. 同文档同位置的引用去重合并展示
-        return collapseDisplayedSources(validated);
+        return candidatesByEvidenceId;
     }
 
     private UsedSource fromDocument(Document document) {
@@ -156,12 +168,31 @@ public class UsedSourceValidator {
         return fileName.substring(idx + 1).toLowerCase(java.util.Locale.ROOT);
     }
 
-    private SourceValidationException validationFailure(String reason, SourcedAnswerResult result, List<Document> candidates) {
+    private SourceValidationException validationFailure(String reason, Object result, List<Document> candidates) {
+        String answerType = null;
+        int requestedSources = 0;
+        if (result instanceof SourcedAnswerResult sourcedAnswerResult) {
+            answerType = sourcedAnswerResult.answerType();
+            requestedSources = sourcedAnswerResult.usedSources() == null ? 0 : sourcedAnswerResult.usedSources().size();
+        } else if (result instanceof SourcePlanResult sourcePlanResult) {
+            answerType = sourcePlanResult.answerType();
+            requestedSources = sourcePlanResult.usedSources() == null ? 0 : sourcePlanResult.usedSources().size();
+        }
         log.warn("Used source validation failed: reason={}, answerType={}, requestedSources={}, candidateCount={}",
                 reason,
-                result == null ? null : result.answerType(),
-                result == null || result.usedSources() == null ? 0 : result.usedSources().size(),
+                answerType,
+                requestedSources,
                 candidates == null ? 0 : candidates.size());
         return new SourceValidationException(UNRELIABLE_SOURCE_MESSAGE, reason);
+    }
+
+    public record ValidatedSourcePlan(
+            String answerType,
+            List<String> evidenceIds,
+            List<UsedSource> usedSources) {
+        public ValidatedSourcePlan {
+            evidenceIds = evidenceIds == null ? List.of() : List.copyOf(evidenceIds);
+            usedSources = usedSources == null ? List.of() : List.copyOf(usedSources);
+        }
     }
 }

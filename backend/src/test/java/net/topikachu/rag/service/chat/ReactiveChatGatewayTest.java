@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import net.topikachu.rag.agent.AgentResolution;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.openai.api.ResponseFormat;
 
 import java.util.List;
 
@@ -110,6 +111,28 @@ class ReactiveChatGatewayTest {
     }
 
     @Test
+    void strictSourcePlanParsesOnlyAnswerTypeAndEvidenceIds() {
+        SourcePlanResult plan = ReactiveChatGateway.decodeStrictSourcePlan(
+                "{\"answerType\":\"factual\",\"usedSources\":[\"ev-1\"]}",
+                objectMapper);
+
+        assertEquals("factual", plan.answerType());
+        assertEquals(List.of("ev-1"), plan.usedSources());
+    }
+
+    @Test
+    void strictSourcePlanRejectsAnswerFieldAndMalformedShapes() {
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictSourcePlan(
+                "{\"answer\":\"不要出现\",\"answerType\":\"factual\",\"usedSources\":[\"ev-1\"]}",
+                objectMapper));
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictSourcePlan(
+                "{\"answerType\":\"factual\",\"usedSources\":[1]}",
+                objectMapper));
+        assertThrows(StructuredAnswerException.class, () -> ReactiveChatGateway.decodeStrictSourcePlan(
+                "{not-json", objectMapper));
+    }
+
+    @Test
     void strictSchemaOptionsDeclareJsonSchemaAndStrictMode() {
         var responseFormat = SourcedAnswerPrompts.structuredOutputOptions().getResponseFormat();
 
@@ -117,6 +140,17 @@ class ReactiveChatGatewayTest {
         assertEquals("sourced_answer", responseFormat.getJsonSchema().getName());
         assertEquals(true, responseFormat.getJsonSchema().getStrict());
         assertDoesNotThrow(() -> responseFormat.getJsonSchema().getSchema().get("required"));
+    }
+
+    @Test
+    void sourcePlanSchemaDeclaresOnlyPlanningFields() {
+        var responseFormat = SourcedAnswerPrompts.sourcePlanOptions().getResponseFormat();
+
+        assertEquals(ResponseFormat.Type.JSON_SCHEMA, responseFormat.getType());
+        assertEquals("source_plan", responseFormat.getJsonSchema().getName());
+        assertEquals(true, responseFormat.getJsonSchema().getStrict());
+        assertEquals(List.of("answerType", "usedSources"),
+                responseFormat.getJsonSchema().getSchema().get("required"));
     }
 
     @Test

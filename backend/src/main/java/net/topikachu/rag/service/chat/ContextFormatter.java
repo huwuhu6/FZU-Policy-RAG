@@ -59,6 +59,39 @@ public class ContextFormatter {
         return new FormattedContext(contextBuilder.toString(), truncated);
     }
 
+    /**
+     * Formats the final child candidates for source planning. This is
+     * intentionally separate from parent-context formatting so Phase A never
+     * receives the full expanded parent blocks.
+     */
+    public String formatCandidateEvidence(List<Document> candidates) {
+        StringBuilder contextBuilder = new StringBuilder();
+        List<Document> safeCandidates = candidates == null ? List.of() : candidates;
+        for (int i = 0; i < safeCandidates.size(); i++) {
+            Document candidate = safeCandidates.get(i);
+            Map<String, Object> metadata = candidate == null ? Map.of() : candidate.getMetadata();
+            String evidenceId = evidenceId(candidate);
+            String structuredEntry = String.format(
+                    """
+                            【候选证据 %d】
+                            来源: %s
+                            evidence_id: %s
+                            内容: %s
+                            ------------------------
+                            """,
+                    i + 1,
+                    documentSourceLabel(metadata, i),
+                    evidenceId == null ? "" : evidenceId,
+                    candidate == null || candidate.getText() == null ? "" : candidate.getText());
+            if (contextBuilder.length() + structuredEntry.length() > maxContextChars) {
+                log.warn("Candidate evidence limit reached, dropping remaining candidates from rank {}", i);
+                break;
+            }
+            contextBuilder.append(structuredEntry);
+        }
+        return contextBuilder.toString();
+    }
+
     public record FormattedContext(String text, boolean truncated) {
     }
 
@@ -113,6 +146,32 @@ public class ContextFormatter {
             return filename + " · 第" + block.pageStart() + "-" + block.pageEnd() + "页";
         }
         return filename + " · 片段" + block.parentIndex();
+    }
+
+    private String documentSourceLabel(Map<String, Object> metadata, int index) {
+        String filename = String.valueOf(metadata.getOrDefault("file_name", "Unknown Source"));
+        Object pageStart = metadata.get("page_start");
+        Object pageEnd = metadata.get("page_end");
+        if (pageStart != null && pageEnd != null) {
+            if (pageStart.toString().equals(pageEnd.toString())) {
+                return filename + " · 第" + pageStart + "页";
+            }
+            return filename + " · 第" + pageStart + "-" + pageEnd + "页";
+        }
+        Object page = metadata.get("page_number");
+        if (page != null) {
+            return filename + " · 第" + page + "页";
+        }
+        Object parentIndex = metadata.get("parent_index");
+        return filename + " · 片段" + (parentIndex == null ? index + 1 : parentIndex);
+    }
+
+    private String evidenceId(Document document) {
+        if (document == null) {
+            return null;
+        }
+        Object value = document.getMetadata().get("evidence_id");
+        return value == null ? document.getId() : value.toString();
     }
 
     // 将 evidence_id 列表格式化为 LLM 可读的清单，每行一条 "- doc_uuid:child:N:hash"

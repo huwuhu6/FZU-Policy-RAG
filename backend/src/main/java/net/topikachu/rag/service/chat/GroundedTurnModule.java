@@ -11,13 +11,18 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 @Slf4j
@@ -96,6 +101,164 @@ public final class GroundedTurnModule {
                     return tracingSupport.traceMono("rag.source_validate", command.traceTags(), validation);
                 })
                 .flatMap(result -> commit(command, result).thenReturn(result));
+    }
+
+    /**
+     * Two-phase generation for strategies that explicitly support validated
+     * answer streaming. Phase A is fully buffered and validated; only then is
+     * the Phase B answer Flux assembled. DeepSeek and other strategies retain
+     * the original atomic execute() path.
+     */
+    public Mono<StreamResult> stream(Command command) {
+        Objects.requireNonNull(command, "command must not be null");
+        ChatModelStrategy strategy = strategyFactory.getStrategy(command.modelId());
+        if (!strategy.supportsValidatedAnswerStreaming()) {
+            return execute(command)
+                    .map(result -> new StreamResult(
+                            Flux.just(result.answer()), result.answerType(), result.usedSources()));
+        }
+
+        return loadHistory(command.conversationId())
+                .flatMap(history -> {
+                    long sourcePlanStart = System.nanoTime();
+                    String candidateContext = contextFormatter.formatCandidateEvidence(command.candidateEvidence());
+                    Mono<SourcePlanResult> sourcePlan = strategy.callSourcePlan(
+                                    reactiveChatGateway,
+                                    candidateContext,
+                                    command.userInput(),
+                                    command.conversationId(),
+                                    history);
+                    return tracingSupport.traceMono("rag.source_plan", command.traceTags(), sourcePlan)
+                            .doOnNext(plan -> log.info(
+                                    "[RAG] source-plan traceId={} conversationId={} msgId={} candidateEvidence={} answerType={} requestedSources={} elapsedMs={}",
+                                    command.traceId(), command.conversationId(), command.msgId(),
+                                    command.candidateEvidence().size(), plan.answerType(),
+                                    plan.usedSources().size(), elapsedMs(sourcePlanStart)))
+                            .doOnError(error -> log.warn(
+                                    "[RAG] failed stage=source-plan traceId={} conversationId={} msgId={} errorType={} elapsedMs={}",
+                                    command.traceId(), command.conversationId(), command.msgId(),
+                                    error.getClass().getSimpleName(), elapsedMs(sourcePlanStart)))
+                            .onErrorMap(this::toSourceValidationError)
+                            .flatMap(plan -> validateSourcePlan(command, plan))
+                            .map(validatedPlan -> new PreparedPlan(history, validatedPlan));
+                })
+                .flatMap(prepared -> {
+                    UsedSourceValidator.ValidatedSourcePlan validatedPlan = prepared.plan();
+                    List<Message> history = prepared.history();
+                    if ("refusal".equalsIgnoreCase(validatedPlan.answerType())) {
+                        String refusal = UsedSourceValidator.UNRELIABLE_SOURCE_MESSAGE;
+                        Flux<String> refusalFlux = Flux.defer(() ->
+                                Flux.just(refusal)
+                                        .concatWith(commit(command, new Result(refusal, "refusal", List.of()))
+                                                .then(Mono.<String>empty())));
+                        return Mono.just(new StreamResult(refusalFlux, "refusal", List.of()));
+                    }
+
+                    List<ParentContextBlock> selectedParents = selectValidatedParents(
+                            command.parentContexts(), validatedPlan.evidenceIds());
+                    if (selectedParents.isEmpty()) {
+                        return Mono.error(new SourceValidationException(
+                                UsedSourceValidator.UNRELIABLE_SOURCE_MESSAGE,
+                                UsedSourceValidator.REASON_PARENT_CONTEXT_MISSING));
+                    }
+
+                    ContextFormatter.FormattedContext formattedContext = contextFormatter
+                            .formatParentContextsWithStats(selectedParents);
+                    log.info("[RAG] stream-start traceId={} conversationId={} msgId={} parents={} contextChars={} truncated={} model={}",
+                            command.traceId(), command.conversationId(), command.msgId(), selectedParents.size(),
+                            formattedContext.text().length(), formattedContext.truncated(), command.modelId());
+
+                    Flux<String> answerFlux = Flux.defer(() -> {
+                        long generationStart = System.nanoTime();
+                        StringBuilder answerBuffer = new StringBuilder();
+                        AtomicBoolean firstChunkSeen = new AtomicBoolean();
+                        AtomicInteger chunkCount = new AtomicInteger();
+                        Flux<String> modelFlux = strategy.streamGroundedAnswer(
+                                reactiveChatGateway,
+                                formattedContext.text(),
+                                command.userInput(),
+                                command.conversationId(),
+                                history)
+                                .filter(chunk -> chunk != null && !chunk.isBlank())
+                                .doOnNext(chunk -> {
+                                    answerBuffer.append(chunk);
+                                    int currentChunk = chunkCount.incrementAndGet();
+                                    if (firstChunkSeen.compareAndSet(false, true)) {
+                                        log.info("[RAG] first-chunk traceId={} conversationId={} msgId={} firstChunkMs={} chunk={}",
+                                                command.traceId(), command.conversationId(), command.msgId(),
+                                                elapsedMs(generationStart), currentChunk);
+                                    }
+                                });
+                        return modelFlux
+                                .concatWith(Mono.defer(() -> {
+                                    if (answerBuffer.isEmpty()) {
+                                        return Mono.error(new StructuredAnswerException(
+                                                "Grounded answer stream completed without content."));
+                                    }
+                                    return commit(command, new Result(
+                                                    answerBuffer.toString(),
+                                                    "factual",
+                                                    validatedPlan.usedSources()))
+                                            .then(Mono.<String>empty());
+                                }))
+                                .doOnComplete(() -> log.info(
+                                        "[RAG] stream-complete traceId={} conversationId={} msgId={} chunks={} answerChars={} generationMs={}",
+                                        command.traceId(), command.conversationId(), command.msgId(),
+                                        chunkCount.get(), answerBuffer.length(), elapsedMs(generationStart)));
+                    });
+                    return Mono.just(new StreamResult(
+                            answerFlux, "factual", validatedPlan.usedSources()));
+                });
+    }
+
+    private Mono<UsedSourceValidator.ValidatedSourcePlan> validateSourcePlan(
+            Command command, SourcePlanResult plan) {
+        long validationStart = System.nanoTime();
+        Mono<UsedSourceValidator.ValidatedSourcePlan> validation = Mono.fromCallable(() -> {
+                    try {
+                        UsedSourceValidator.ValidatedSourcePlan validated =
+                                usedSourceValidator.validateSourcePlan(plan, command.candidateEvidence());
+                        log.info("[RAG] source-validate traceId={} conversationId={} msgId={} answerType={} requestedSources={} validatedSources={} elapsedMs={}",
+                                command.traceId(), command.conversationId(), command.msgId(),
+                                validated.answerType(), plan.usedSources().size(),
+                                validated.evidenceIds().size(), elapsedMs(validationStart));
+                        return validated;
+                    } catch (SourceValidationException error) {
+                        log.warn("[RAG] source-validate failed traceId={} conversationId={} msgId={} reason={}",
+                                command.traceId(), command.conversationId(), command.msgId(), error.getReason());
+                        throw error;
+                    }
+                });
+        return tracingSupport.traceMono("rag.source_validate", command.traceTags(), validation);
+    }
+
+    private List<ParentContextBlock> selectValidatedParents(
+            List<ParentContextBlock> parents, List<String> validatedEvidenceIds) {
+        Set<String> allowed = new HashSet<>(validatedEvidenceIds == null ? List.of() : validatedEvidenceIds);
+        return (parents == null ? List.<ParentContextBlock>of() : parents).stream()
+                .map(parent -> {
+                    List<String> selectedEvidenceIds = parent.evidenceIds() == null
+                            ? List.of()
+                            : parent.evidenceIds().stream()
+                            .filter(allowed::contains)
+                            .distinct()
+                            .toList();
+                    if (selectedEvidenceIds.isEmpty()) {
+                        return null;
+                    }
+                    return new ParentContextBlock(
+                            parent.parentBlockId(),
+                            parent.docUuid(),
+                            parent.fileName(),
+                            parent.content(),
+                            parent.parentIndex(),
+                            parent.pageStart(),
+                            parent.pageEnd(),
+                            selectedEvidenceIds,
+                            parent.rank());
+                })
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     public Mono<Void> commitDirectReply(Command command, String answer) {
@@ -198,5 +361,17 @@ public final class GroundedTurnModule {
         public Result {
             usedSources = usedSources == null ? List.of() : List.copyOf(usedSources);
         }
+    }
+
+    public record StreamResult(Flux<String> answerFlux, String answerType, List<UsedSource> usedSources) {
+        public StreamResult {
+            Objects.requireNonNull(answerFlux, "answerFlux must not be null");
+            usedSources = usedSources == null ? List.of() : List.copyOf(usedSources);
+        }
+    }
+
+    private record PreparedPlan(
+            List<Message> history,
+            UsedSourceValidator.ValidatedSourcePlan plan) {
     }
 }

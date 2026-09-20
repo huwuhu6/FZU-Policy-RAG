@@ -193,4 +193,49 @@ class UsedSourceValidatorTest {
 
         assertEquals(UsedSourceValidator.REASON_EVIDENCE_ID_NOT_IN_CANDIDATES, error.getReason());
     }
+
+    @Test
+    void validatesFactualSourcePlanAndReturnsRawIdsAndDisplayedSources() {
+        Document candidate = candidate("ev-1", "doc-1", "policy.pdf");
+
+        UsedSourceValidator.ValidatedSourcePlan validated = validator.validateSourcePlan(
+                new SourcePlanResult("factual", List.of("ev-1")), List.of(candidate));
+
+        assertEquals("factual", validated.answerType());
+        assertEquals(List.of("ev-1"), validated.evidenceIds());
+        assertEquals(List.of("ev-1"), validated.usedSources().stream()
+                .map(UsedSource::evidenceId).toList());
+    }
+
+    @Test
+    void validatesRefusalSourcePlanWithoutAnswerText() {
+        UsedSourceValidator.ValidatedSourcePlan validated = validator.validateSourcePlan(
+                new SourcePlanResult("refusal", List.of()), List.of());
+
+        assertEquals("refusal", validated.answerType());
+        assertEquals(List.of(), validated.evidenceIds());
+        assertEquals(List.of(), validated.usedSources());
+    }
+
+    @Test
+    void rejectsHallucinatedAndRefusalSourcePlanIds() {
+        SourceValidationException hallucinated = assertThrows(SourceValidationException.class,
+                () -> validator.validateSourcePlan(
+                        new SourcePlanResult("factual", List.of("missing")),
+                        List.of(candidate("ev-1", "doc-1", "policy.pdf"))));
+        assertEquals(UsedSourceValidator.REASON_EVIDENCE_ID_NOT_IN_CANDIDATES, hallucinated.getReason());
+
+        SourceValidationException refusalWithSource = assertThrows(SourceValidationException.class,
+                () -> validator.validateSourcePlan(
+                        new SourcePlanResult("refusal", List.of("ev-1")),
+                        List.of(candidate("ev-1", "doc-1", "policy.pdf"))));
+        assertEquals(UsedSourceValidator.REASON_REFUSAL_SOURCES_NOT_EMPTY, refusalWithSource.getReason());
+    }
+
+    private Document candidate(String evidenceId, String docUuid, String fileName) {
+        return new Document("content", Map.of(
+                "evidence_id", evidenceId,
+                "doc_uuid", docUuid,
+                "file_name", fileName));
+    }
 }

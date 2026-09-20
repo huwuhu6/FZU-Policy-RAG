@@ -222,3 +222,17 @@ Embedding、Milvus 和 Rerank 均可完成，但 Qwen Chat 使用 `DashScopeChat
 ### 验证
 
 `mvn clean compile` 通过；本轮定向测试 43 个全部通过，覆盖结构化异常边界、FAQ threshold/margin/fail-open、路由顺序、FAQ 持久化和既有 Retrieval 回归。全量测试 176 个中 174 个通过，剩余 `ReactiveRefactorGuardTest` 的既有 Agent/ETL `.block()` 守卫问题及本机 Milvus 未连接导致的 `DEADLINE_EXCEEDED` 与本轮无关。本轮未实现浏览器端 Token Streaming，未修改 SSE 协议、Retrieval/Rerank/Parent-Child 算法、Embedding 模型或 Chat HTTP timeout。
+
+## 2026-09-20｜建立先校验来源再输出的 Qwen 真流式链路
+
+### 设计与边界
+
+标准 Qwen `mode=rag` 从原来的“模型流式请求但后端完整缓冲 JSON”改为两阶段生成。Phase A 使用 strict JSON Schema 只规划 `answerType` 和 `usedSources`，输入仅包含最终 child candidates；规划结果先经过 `UsedSourceValidator` 的候选 evidence 白名单校验，再按已验证 evidence_id 收口 Parent Context。只有校验通过后才启动 Phase B 的普通文本 `ChatClient.stream()`，因此任何 factual 文本 chunk 暴露前都已经完成引用校验。
+
+Phase B 使用 request-local buffer 累积完整回答，同时逐 chunk 向下游发送；模型正常完成后才执行 ChatMemory/ChatHistory 持久化，持久化完成后 SSE 才发送 `done`。取消或中途异常不会持久化不完整答案；已经发送过 chunk 后发生异常只发送 `error` 和 `done`，不再拼接误导性的 fallback message。前端沿用既有 `message` 事件追加逻辑，仅保持已出现部分答案在 `error` 后不被 `done` 状态覆盖。
+
+Qwen strategy 显式声明支持 validated streaming；DeepSeek 保留原有 Function Calling、完整校验和一次性结果路径。ChitChat、FAQ、Query Rewrite、Retrieval、Rerank、Parent-Child 和 SSE 事件名称均未重构。
+
+### 验证与当前限制
+
+新增 Source Plan strict decode、SourcePlan evidence 校验、Qwen 多 chunk、完成后持久化、refusal 短路、mid-stream error、SSE 顺序和 DeepSeek 兼容回归测试。定向测试全部通过；`mvn clean compile` 通过；全量测试 187 个中仅剩既有 `ReactiveRefactorGuardTest` 的 Agent/ETL `.block()` 守卫失败，Milvus 定向测试已通过且不再报错。`npm run build` 在正常权限环境通过，仅保留依赖注释和 chunk size 警告。本轮没有把 structured JSON 直接透传给浏览器，也没有修改前端 SSE 协议或 Retrieval/Rerank 算法。

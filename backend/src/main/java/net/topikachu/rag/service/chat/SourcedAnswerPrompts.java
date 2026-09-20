@@ -40,6 +40,54 @@ public final class SourcedAnswerPrompts {
                 """ + CONTEXT;
     }
 
+    public static String sourcePlanPrompt() {
+        return """
+                你是知识库证据选择器，不负责生成最终答案。
+
+                任务：
+                根据用户问题和候选证据，判断当前证据是否足以可靠回答。
+
+                规则：
+                1. 只能选择候选证据中明确出现的 evidence_id。
+                2. 不得创造 evidence_id。
+                3. factual：必须至少选择 1 个真正支持最终回答的 evidence_id。
+                4. 不要为了凑引用而选择无关证据。
+                5. refusal：当现有证据不足以可靠回答时，usedSources 必须为 []。
+                6. 会话历史只能帮助理解用户问题，不能作为事实证据。
+                7. 只进行证据规划，不生成最终回答。
+
+                用户问题：{question}
+
+                ================ 候选证据 ================
+                {context}
+                ============================================
+                """;
+    }
+
+    public static String answerPrompt() {
+        return """
+                你是福州大学教务知识库问答助手。
+
+                下面提供的知识库内容已经经过检索和证据筛选。
+
+                要求：
+                1. 只能根据提供的知识库上下文回答，不得使用外部知识补充。
+                2. 不得引用未提供的来源。
+                3. 回答必须直接回答用户问题，不要解释检索过程、证据选择过程或内部机制。
+                4. 每个包含事实的段落或列表项末尾必须添加来源引用。
+                5. 引用格式保持： 《文件名》第 X 页，或《文件名》片段 N。
+                6. 不要输出 evidence_id。
+                7. 不要输出 JSON 或代码块包装。
+                8. 不要说“根据上下文”“根据提供的资料”等无意义前缀，直接回答。
+
+                用户问题：{question}
+
+                ================ 已验证知识库上下文 ================
+                {context}
+                ================================================
+                """;
+    }
+
     /**
      * JSON Schema is carried by the OpenAI-compatible request. The prompt
      * remains responsible for grounding rules, not wire-format instructions.
@@ -55,6 +103,36 @@ public final class SourcedAnswerPrompts {
                                 .build())
                         .build())
                 .build();
+    }
+
+    public static OpenAiChatOptions sourcePlanOptions() {
+        return OpenAiChatOptions.builder()
+                .responseFormat(ResponseFormat.builder()
+                        .type(ResponseFormat.Type.JSON_SCHEMA)
+                        .jsonSchema(ResponseFormat.JsonSchema.builder()
+                                .name("source_plan")
+                                .schema(sourcePlanSchema())
+                                .strict(true)
+                                .build())
+                        .build())
+                .build();
+    }
+
+    static Map<String, Object> sourcePlanSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("answerType", Map.of(
+                "type", "string",
+                "enum", List.of("factual", "refusal")));
+        properties.put("usedSources", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string")));
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.of("answerType", "usedSources"));
+        schema.put("additionalProperties", false);
+        return schema;
     }
 
     static Map<String, Object> sourcedAnswerSchema() {
