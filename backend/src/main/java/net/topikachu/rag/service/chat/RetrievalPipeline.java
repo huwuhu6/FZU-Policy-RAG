@@ -23,6 +23,17 @@ import java.util.Objects;
 @Slf4j
 public class RetrievalPipeline {
 
+    /**
+     * Evaluation-only outcome. It exposes rerank observability without changing
+     * the production retrieval result or its ranking policy.
+     */
+    public record RetrievalOutcome(List<Document> documents,
+                                   boolean rerankRequested,
+                                   boolean rerankApplied,
+                                   boolean rerankFallback,
+                                   String rerankFallbackReason) {
+    }
+
     private final HybridSearchService hybridSearchService;
     private final RerankService rerankService;
     private final TracingSupport tracingSupport;
@@ -52,7 +63,8 @@ public class RetrievalPipeline {
                                           SearchScope searchScope,
                                           int hybridTopK,
                                           int rerankTopK) {
-        return retrieveInternal(query, currentUserContext, searchScope, hybridTopK, rerankTopK, true, true, Map.of());
+        return retrieveInternal(query, currentUserContext, searchScope, hybridTopK, rerankTopK, true, true, Map.of())
+                .map(RetrievalOutcome::documents);
     }
 
     public Mono<List<Document>> retrieve(String query,
@@ -61,7 +73,8 @@ public class RetrievalPipeline {
                                           int hybridTopK,
                                           int rerankTopK,
                                           Map<String, Object> extraTags) {
-        return retrieveInternal(query, currentUserContext, searchScope, hybridTopK, rerankTopK, true, true, extraTags);
+        return retrieveInternal(query, currentUserContext, searchScope, hybridTopK, rerankTopK, true, true, extraTags)
+                .map(RetrievalOutcome::documents);
     }
 
     public Mono<RetrievalResult> retrieveWithParentContexts(String query,
@@ -71,7 +84,8 @@ public class RetrievalPipeline {
                                                             int rerankTopK,
                                                             Map<String, Object> extraTags) {
         return retrieveInternal(query, currentUserContext, searchScope, hybridTopK, rerankTopK, true, true, extraTags)
-                .flatMap(childCandidates -> {
+                .flatMap(outcome -> {
+                    List<Document> childCandidates = outcome.documents();
                     if (childCandidates == null || childCandidates.isEmpty()) {
                         return Mono.just(new RetrievalResult(List.of(), List.of()));
                     }
@@ -85,17 +99,32 @@ public class RetrievalPipeline {
                                           int rerankTopK,
                                           boolean useSparseSearch,
                                           boolean useRerank) {
-        return retrieveInternal(query, null, SearchScope.empty(), hybridTopK, rerankTopK, useSparseSearch, useRerank, Map.of());
+        return retrieveInternal(query, null, SearchScope.empty(), hybridTopK, rerankTopK, useSparseSearch, useRerank, Map.of())
+                .map(RetrievalOutcome::documents);
     }
 
-    private Mono<List<Document>> retrieveInternal(String query,
-                                                   CurrentUserContext currentUserContext,
-                                                   SearchScope searchScope,
-                                                   int hybridTopK,
-                                                   int rerankTopK,
-                                                   boolean useSparseSearch,
-                                                   boolean useRerank,
-                                                   Map<String, Object> extraTags) {
+    /**
+     * Evaluation entry point. Mapping retrieved doc_uuid values to qrels is
+     * intentionally kept outside this method so it does not affect retrieval
+     * latency measurements.
+     */
+    public Mono<RetrievalOutcome> retrieveForEvaluation(String query,
+                                                        int hybridTopK,
+                                                        int rerankTopK,
+                                                        boolean useSparseSearch,
+                                                        boolean useRerank) {
+        return retrieveInternal(query, null, SearchScope.empty(), hybridTopK, rerankTopK,
+                useSparseSearch, useRerank, Map.of());
+    }
+
+    private Mono<RetrievalOutcome> retrieveInternal(String query,
+                                                     CurrentUserContext currentUserContext,
+                                                     SearchScope searchScope,
+                                                     int hybridTopK,
+                                                     int rerankTopK,
+                                                     boolean useSparseSearch,
+                                                     boolean useRerank,
+                                                     Map<String, Object> extraTags) {
         long searchStart = System.currentTimeMillis();
         Map<String, Object> traceTags = new java.util.HashMap<>(Map.of(
                 "rag.hybrid_topk", hybridTopK,
@@ -115,11 +144,13 @@ public class RetrievalPipeline {
                         error.getClass().getSimpleName()))
                 .flatMap(candidates -> {
                     if (candidates == null || candidates.isEmpty()) {
-                        return Mono.just(Collections.emptyList());
+                        return Mono.just(new RetrievalOutcome(Collections.emptyList(), useRerank, false, false, null));
                     }
                     if (!useRerank) {
                         // rerankTopK 在此兼任截断上限：跳过重排序时直接按此数量截断候选集
-                        return Mono.just(candidates.subList(0, Math.min(candidates.size(), rerankTopK)));
+                        return Mono.just(new RetrievalOutcome(
+                                candidates.subList(0, Math.min(candidates.size(), rerankTopK)),
+                                false, false, false, null));
                     }
                     long rerankStart = System.currentTimeMillis();
                     Map<String, Object> rerankTags = new java.util.HashMap<>(extraTags == null ? Map.of() : extraTags);
@@ -151,7 +182,12 @@ public class RetrievalPipeline {
                                         rerankScoreThreshold, thresholdPassed, finalDocuments.size(), stage.fallback(),
                                         stage.reason() == null ? "" : " reason=" + stage.reason(),
                                         System.currentTimeMillis() - rerankStart);
-                                return finalDocuments;
+                                return new RetrievalOutcome(
+                                        finalDocuments,
+                                        true,
+                                        !stage.fallback(),
+                                        stage.fallback(),
+                                        stage.reason());
                             });
                 });
     }

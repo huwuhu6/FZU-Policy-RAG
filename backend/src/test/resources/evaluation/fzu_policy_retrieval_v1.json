@@ -1,0 +1,506 @@
+[
+  {
+    "qid": "fzu_001",
+    "query": "福州大学本科生申请转专业需要满足哪些基本情形？",
+    "category": "transfer_policy",
+    "relevantDocuments": [
+      {
+        "documentKey": "cef64ba9a242e529db10de6de7a0d133021d0520de1ca183fa790409a8657aba",
+        "docUuid": "c7b6d5f3cf4049ca861c5af54e290843",
+        "fileName": "福州大学本科生转专业管理实施办法.docx",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "学生符合以下情形之一的，可以申请转专业：在学习期间对其他专业有兴趣和专长，或者因患病、特殊困难或特别需要无法继续在本专业学习但尚可在其他专业学习。",
+    "evidence": "《福州大学本科生转专业管理实施办法》Parent block 1，第六条：在学习期间对其他专业有兴趣和专长的；因患病或者有特殊困难、特别需要，无法继续在本专业学习或者不适应本专业学习要求，但尚可在其他专业学习的。",
+    "notes": "以当前快照中的2025年9月施行版本为准。"
+  },
+  {
+    "qid": "fzu_002",
+    "query": "福州大学本科生每学年可以申请几次转专业，在校期间能转几次？",
+    "category": "transfer_policy",
+    "relevantDocuments": [
+      {
+        "documentKey": "cef64ba9a242e529db10de6de7a0d133021d0520de1ca183fa790409a8657aba",
+        "docUuid": "c7b6d5f3cf4049ca861c5af54e290843",
+        "fileName": "福州大学本科生转专业管理实施办法.docx",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "转专业每学年办理一次，学生可以在第一学期末或第三学期末自主申请；在校期间只能转一次专业，包括进入转专业公示名单的情形。",
+    "evidence": "《福州大学本科生转专业管理实施办法》Parent block 1，第五条：转专业每学年办理一次，学生可以在第一学期末或第三学期末自主申请；学生在学期间只能转一次专业，包括进入转专业公示名单者。",
+    "notes": "单文档精确条款 case。"
+  },
+  {
+    "qid": "fzu_003",
+    "query": "哪些学生明确不得申请转专业？",
+    "category": "transfer_policy",
+    "relevantDocuments": [
+      {
+        "documentKey": "cef64ba9a242e529db10de6de7a0d133021d0520de1ca183fa790409a8657aba",
+        "docUuid": "c7b6d5f3cf4049ca861c5af54e290843",
+        "fileName": "福州大学本科生转专业管理实施办法.docx",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "国家有相关规定或录取前有明确约定、定向生或高水平运动队、中外合作办学或闽台联合培养项目学生、本科三年级及以上学生、保留入学资格或学籍及休学期间学生，以及应予退学或开除学籍处分等情形的，不得转专业。",
+    "evidence": "《福州大学本科生转专业管理实施办法》Parent block 2，第十一条列出不得转专业情形，包括定向生、高水平运动队、中外合作办学和闽台高校联合培养项目、本科三年级（含）以上、保留入学资格或学籍、休学期间等。",
+    "notes": "排他性限制条款，适合测试否定性事实召回。"
+  },
+  {
+    "qid": "fzu_004",
+    "query": "艺术类专业学生能不能转到普通类专业？",
+    "category": "transfer_policy",
+    "relevantDocuments": [
+      {
+        "documentKey": "cef64ba9a242e529db10de6de7a0d133021d0520de1ca183fa790409a8657aba",
+        "docUuid": "c7b6d5f3cf4049ca861c5af54e290843",
+        "fileName": "福州大学本科生转专业管理实施办法.docx",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "普通类专业和艺术类专业之间不能申请互转专业，因此艺术类专业学生不能转入普通类专业。",
+    "evidence": "《福州大学本科生转专业管理实施办法》Parent block 1，第八条：普通类专业和艺术类专业之间不能申请互转专业；美术学类、设计学类专业不能与音乐学专业申请互转专业。",
+    "notes": "否定性事实，必须保留该限制条款作为相关证据。"
+  },
+  {
+    "qid": "fzu_005",
+    "query": "转专业网上报名后还需要办理哪些材料和审核手续？",
+    "category": "transfer_policy",
+    "relevantDocuments": [
+      {
+        "documentKey": "cef64ba9a242e529db10de6de7a0d133021d0520de1ca183fa790409a8657aba",
+        "docUuid": "c7b6d5f3cf4049ca861c5af54e290843",
+        "fileName": "福州大学本科生转专业管理实施办法.docx",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "学生应根据学校公布的计划和意愿网上报名，通过教务处初审后打印转专业审批表，并将审批表及相应证明材料送交所在学院教学办；接收学院再按公布的条件和考核办法进行全面考核。",
+    "evidence": "《福州大学本科生转专业管理实施办法》Parent block 2，第十六至十七条：网上报名、通过教务处初审后打印审批表并提交证明材料；接收学院按公布的转入条件和考核办法全面考核。",
+    "notes": "流程型单文档 case。"
+  },
+  {
+    "qid": "fzu_006",
+    "query": "2025年9月施行的转专业办法对旧办法和2024级学生有什么安排？",
+    "category": "version_sensitive",
+    "relevantDocuments": [
+      {
+        "documentKey": "cef64ba9a242e529db10de6de7a0d133021d0520de1ca183fa790409a8657aba",
+        "docUuid": "c7b6d5f3cf4049ca861c5af54e290843",
+        "fileName": "福州大学本科生转专业管理实施办法.docx",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "该办法自2025年9月1日起施行，原2024年办法同时废止；但原办法第八条继续适用于2024级学生，并在其完成转专业相关工作前与新办法并行执行。",
+    "evidence": "《福州大学本科生转专业管理实施办法》Parent block 3，第二十三条：本办法自2025年9月1日起施行；原《福州大学本科生转专业管理实施办法》（福大教〔2024〕16号）废止，但其中第八条继续适用于2024级学生并行执行。",
+    "notes": "version-sensitive；需要人工确认查询者所属年级后再判断适用版本。"
+  },
+  {
+    "qid": "fzu_007",
+    "query": "2025级学生申请转入电气工程及其自动化专业，除学校基本条件外要考什么、如何录取？",
+    "category": "multi_document_transfer",
+    "relevantDocuments": [
+      {
+        "documentKey": "cef64ba9a242e529db10de6de7a0d133021d0520de1ca183fa790409a8657aba",
+        "docUuid": "c7b6d5f3cf4049ca861c5af54e290843",
+        "fileName": "福州大学本科生转专业管理实施办法.docx",
+        "relevance": 2
+      },
+      {
+        "documentKey": "9e5e5c31c132769314e141e6e9af60f8b737ea7ab693e4f9ef27942de0abb0c3",
+        "docUuid": "66672e0f692d4256936d1b66e2b3eafa",
+        "fileName": "2025-2026学年各学院转专业实施细则.pdf",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "首先要符合学校转专业条件；电气工程及其自动化专业的细则要求笔试覆盖高等数学、线性代数与解析几何、物理和英语，最终成绩按笔试70%、面试30%计算，笔试和面试均不低于60分后按最终成绩录取。",
+    "evidence": "学校办法 Parent block 1 第六条规定申请情形；《2025-2026学年各学院转专业实施细则》Parent block 1 的电气工程及其自动化条目规定笔试/面试科目、70%+30%计分及笔试和面试均不低于60分。",
+    "notes": "multi-document；学校共通资格与学院具体考核必须同时召回。人工重点审核2025级接收人数表述。"
+  },
+  {
+    "qid": "fzu_008",
+    "query": "申请转入福州大学需要满足哪些转学条件，哪些情况不得转学？",
+    "category": "transfer_school",
+    "relevantDocuments": [
+      {
+        "documentKey": "f0b2e70607e168b3fe75875405bfe098ffae06fa9823cb678aa666c211e5af48",
+        "docUuid": "2c7dbdc6d1a84f199c0fdc808480730f",
+        "fileName": "福州大学本科生转学管理实施办法（暂行）.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "因患病或特殊困难、特别需要，无法继续在原学校学习或不适应原学校学习要求但尚可在其他专业学习的，可以申请转学；入学未满一学期或毕业前一年、高考成绩低于拟转入学校相应录取成绩、低学历转高学历、定向就业录取或无正当理由的，不得转学。",
+    "evidence": "《福州大学本科生转学管理实施办法（暂行）》Parent block 1，第二条列出患病及特殊困难情形，第三条列出不得转学的五类情形。",
+    "notes": "转学与转专业是不同业务概念，适合测试相似政策误召回。"
+  },
+  {
+    "qid": "fzu_009",
+    "query": "申请转入福州大学的转学手续原则上什么时候办好？",
+    "category": "transfer_school",
+    "relevantDocuments": [
+      {
+        "documentKey": "f0b2e70607e168b3fe75875405bfe098ffae06fa9823cb678aa666c211e5af48",
+        "docUuid": "2c7dbdc6d1a84f199c0fdc808480730f",
+        "fileName": "福州大学本科生转学管理实施办法（暂行）.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "申请转入福州大学的学生应及时提出申请，原则上应在拟就读学期开学前两周内办理好所有转学手续。",
+    "evidence": "《福州大学本科生转学管理实施办法（暂行）》Parent block 1，第九条：原则上应在拟就读学期的开学前两周内办理好所有转学手续。",
+    "notes": "精确时间要求。"
+  },
+  {
+    "qid": "fzu_010",
+    "query": "2025-2026学年转入机械设计制造及其自动化专业要考什么？",
+    "category": "transfer_implementation",
+    "relevantDocuments": [
+      {
+        "documentKey": "9e5e5c31c132769314e141e6e9af60f8b737ea7ab693e4f9ef27942de0abb0c3",
+        "docUuid": "66672e0f692d4256936d1b66e2b3eafa",
+        "fileName": "2025-2026学年各学院转专业实施细则.pdf",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "机械设计制造及其自动化专业采用笔试和面试综合考核。2025级笔试包括一元函数微积分、中学数学、力学和制图；2024级、2023级笔试包括高等数学B、线性代数、工程力学和工程制图。综合成绩按笔试60%、面试40%计算。",
+    "evidence": "《2025-2026学年各学院转专业实施细则》Parent block 2，机械工程及自动化学院条目：列出不同年级笔试科目，并规定综合考核成绩=笔试成绩×60%+面试成绩×40%。",
+    "notes": "同一 PDF 内按年级分支，适合测试精确条款召回。"
+  },
+  {
+    "qid": "fzu_011",
+    "query": "2025-2026学年转入数学类专业的考核和降级要求是什么？",
+    "category": "transfer_implementation",
+    "relevantDocuments": [
+      {
+        "documentKey": "9e5e5c31c132769314e141e6e9af60f8b737ea7ab693e4f9ef27942de0abb0c3",
+        "docUuid": "66672e0f692d4256936d1b66e2b3eafa",
+        "fileName": "2025-2026学年各学院转专业实施细则.pdf",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "数学类专业对2025级学生考核高等数学B并进行笔试、面试；2023级转专业学生需降级至大一年级，2024级学生需要修习相关专业学科基础知识。",
+    "evidence": "《2025-2026学年各学院转专业实施细则》Parent block 3，数学与统计学院条目：列出数学类笔试科目、综合考核方式、2023级降至大一年级及2024级修习学科基础知识的要求。",
+    "notes": "年级条件和专业细则同时出现，人工确认 query 的年级范围。"
+  },
+  {
+    "qid": "fzu_012",
+    "query": "2025-2026学年经济与管理学院的信息管理与信息系统专业，2024级学生转专业后需要降到哪个年级？",
+    "category": "transfer_implementation",
+    "relevantDocuments": [
+      {
+        "documentKey": "9e5e5c31c132769314e141e6e9af60f8b737ea7ab693e4f9ef27942de0abb0c3",
+        "docUuid": "66672e0f692d4256936d1b66e2b3eafa",
+        "fileName": "2025-2026学年各学院转专业实施细则.pdf",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "信息管理与信息系统专业的2024级学生转专业后降至2025级。",
+    "evidence": "《2025-2026学年各学院转专业实施细则》Parent block 7，经济与管理学院的信息管理与信息系统条目明确列出：2023级降至2024级、2024级降至2025级。",
+    "notes": "将原来的专业×年级矩阵问题收窄为单一映射，避免答案只覆盖部分证据。"
+  },
+  {
+    "qid": "fzu_013",
+    "query": "福州大学本科生每学期选课学分一般应控制在多少？",
+    "category": "course_management",
+    "relevantDocuments": [
+      {
+        "documentKey": "279517a254a77f1bc9809710d83ca7dd1fb20508377aae6eca6fd85783bef13f",
+        "docUuid": "04d15977341f4646a67401b6ae5eb01e",
+        "fileName": "福州大学本科生选课管理暂行办法.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "本科生每学期修读课程的学分一般不宜超过30学分，也不宜低于15学分。",
+    "evidence": "《福州大学本科生选课管理暂行办法》Parent block 1，第三条：每学期修读课程的学分一般不宜超过30学分，也不宜低于15学分。",
+    "notes": "精确数字型政策问题。"
+  },
+  {
+    "qid": "fzu_014",
+    "query": "福州大学选课分为哪几个阶段，分别处理什么事情？",
+    "category": "course_management",
+    "relevantDocuments": [
+      {
+        "documentKey": "279517a254a77f1bc9809710d83ca7dd1fb20508377aae6eca6fd85783bef13f",
+        "docUuid": "04d15977341f4646a67401b6ae5eb01e",
+        "fileName": "福州大学本科生选课管理暂行办法.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "选课分为正常选课、补退选课和重修选课三个阶段。正常选课主要选择下学期课程，补退选课用于补选或退课，重修选课供考试不及格的学生重修；正常选课在学期末，补退选课和重修选课在学期初。",
+    "evidence": "《福州大学本科生选课管理暂行办法》Parent block 1，第八条：列出正常选课、补退选课、重修选课三个阶段及对应时间。",
+    "notes": "阶段名称和时间均来自原文。"
+  },
+  {
+    "qid": "fzu_015",
+    "query": "选课时如果课程上课时间冲突怎么办？",
+    "category": "course_management",
+    "relevantDocuments": [
+      {
+        "documentKey": "279517a254a77f1bc9809710d83ca7dd1fb20508377aae6eca6fd85783bef13f",
+        "docUuid": "04d15977341f4646a67401b6ae5eb01e",
+        "fileName": "福州大学本科生选课管理暂行办法.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "原则上只能在时间冲突的课程中选择一门。部分重修课程或辅修课程发生时间冲突时，可以申请部分课程免听，并须在规定时间通过本科教学系统申请、经任课教师审核同意。",
+    "evidence": "《福州大学本科生选课管理暂行办法》Parent block 1，第九条：上课时间冲突原则上只能选一门；部分重修或辅修课程冲突可申请免听。",
+    "notes": "包含一般规则和例外流程。"
+  },
+  {
+    "qid": "fzu_016",
+    "query": "发生转专业或复学等学籍异动后，课程替代时相差学分超过1学分怎么办？",
+    "category": "course_credit_substitution",
+    "relevantDocuments": [
+      {
+        "documentKey": "5bf802a0646600a40e51816136a78bc1d48b71dbd24b6811a526c4fa059db39e",
+        "docUuid": "85f8c45794f14ef5830edc6d08c3acf6",
+        "fileName": "福州大学本科生课程替代与学分认定管理实施办法.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "相差学分超过1学分时，学生须补修由学院指定的其他课程以补全所差学分，实际修读课程与补修课程总学分不得少于被替代课程要求的学分。",
+    "evidence": "《福州大学本科生课程替代与学分认定管理实施办法》Parent block 1，第三条（二）3：相差学分超过1学分的，学生须补修学院指定的其他课程，实际修读课程与补修课程总学分不得少于被替代课程要求学分。",
+    "notes": "真实TEACHING_FILE政策；问题限定在学籍异动课程替代场景。"
+  },
+  {
+    "qid": "fzu_017",
+    "query": "福州大学课程考核成绩有哪些记录方式？",
+    "category": "assessment_and_grades",
+    "relevantDocuments": [
+      {
+        "documentKey": "abd25106f99a4b1795ebb4a0dda0c967c4857d5f19a6541603794728349f0b33",
+        "docUuid": "1e1b174e7b3342a998b2a9d5df836391",
+        "fileName": "福州大学本科生课程考核与成绩记载管理实施办法 （暂行）.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "课程考核成绩可以采用百分制、五级制或二级制记录。",
+    "evidence": "《福州大学本科生课程考核与成绩记载管理实施办法（暂行）》Parent block 1，第二条：成绩记录方式包括百分制、五级制和二级制。",
+    "notes": "术语精确匹配。"
+  },
+  {
+    "qid": "fzu_018",
+    "query": "必修课考试不及格后学校如何安排？选修课不及格呢？",
+    "category": "assessment_and_grades",
+    "relevantDocuments": [
+      {
+        "documentKey": "abd25106f99a4b1795ebb4a0dda0c967c4857d5f19a6541603794728349f0b33",
+        "docUuid": "1e1b174e7b3342a998b2a9d5df836391",
+        "fileName": "福州大学本科生课程考核与成绩记载管理实施办法 （暂行）.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "必修课或限定选修课不及格者，应在下学期开学前参加学校安排的补考；选修课不及格者不安排补考，可以重新学习或改修其他规定课程。",
+    "evidence": "《福州大学本科生课程考核与成绩记载管理实施办法（暂行）》Parent block 1，第三条第（一）至（二）项。",
+    "notes": "对比型条款问题。"
+  },
+  {
+    "qid": "fzu_019",
+    "query": "当前有效规则下，2017级及以后学生百分制成绩对应的绩点怎么计算？",
+    "category": "version_sensitive",
+    "relevantDocuments": [
+      {
+        "documentKey": "abd25106f99a4b1795ebb4a0dda0c967c4857d5f19a6541603794728349f0b33",
+        "docUuid": "1e1b174e7b3342a998b2a9d5df836391",
+        "fileName": "福州大学本科生课程考核与成绩记载管理实施办法 （暂行）.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "2017级及以后学生采用新的绩点对应关系：90—100分为4.0，85—89分为3.7，81—84分为3.3，78—80分为3.0，75—77分为2.7，72—74分为2.3，68—71分为2.0，64—67分为1.7，60—63分为1.3，0—59分为0。",
+    "evidence": "《福州大学本科生课程考核与成绩记载管理实施办法（暂行）》Parent block 1，第四条（二）：明确写有“2017级以后的学生（含2017级）”及百分制成绩与绩点对应表。",
+    "notes": "version-sensitive；按当前快照中的有效文本取值，不与2016级以前的4.5绩点规则混用。"
+  },
+  {
+    "qid": "fzu_020",
+    "query": "什么情况下可以申请缓考，缓考一般怎么安排？",
+    "category": "assessment_and_grades",
+    "relevantDocuments": [
+      {
+        "documentKey": "abd25106f99a4b1795ebb4a0dda0c967c4857d5f19a6541603794728349f0b33",
+        "docUuid": "1e1b174e7b3342a998b2a9d5df836391",
+        "fileName": "福州大学本科生课程考核与成绩记载管理实施办法 （暂行）.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "因疾病或特殊原因不能按时参加考核的，可以凭医院证明或相应证明在考核前登录本科教学管理系统申请缓考，经所在学院批准后生效。缓考一般安排在同一门课程下一次考核时进行；同一门课程只能申请一次，一学期一般最多申请2门，补考不能申请缓考。",
+    "evidence": "《福州大学本科生课程考核与成绩记载管理实施办法（暂行）》Parent block 1，第五条：规定申请原因、证明、申请时间、安排方式、次数及补考限制。",
+    "notes": "多约束条款，适合测试完整证据覆盖。"
+  },
+  {
+    "qid": "fzu_021",
+    "query": "同一竞赛的同一参赛作品在同一年度获得多个不同级别奖项，创新创业实践与素质拓展学分如何记？",
+    "category": "innovation_credit",
+    "relevantDocuments": [
+      {
+        "documentKey": "0a911da79c83126770198a118ce346fdf5107b47764516d5f6979a7c519451c0",
+        "docUuid": "52b632a6c34e4b22821334f8034d10c5",
+        "fileName": "福州大学本科生创新创业实践与素质拓展学分认定管理实施办法.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "同一年度同一参赛作品获得不同级别奖项时，只取原始分值最高的1项作品或项目计算，不重复累加记分。",
+    "evidence": "《福州大学本科生创新创业实践与素质拓展学分认定管理实施办法》Parent block 1，第九条：同一竞赛、同一参赛作品在同一年度（或同一届）获得不同级别奖项，只取获最高原始分值的1项，不重复累加。",
+    "notes": "真实TEACHING_FILE政策；限定同一作品、同一年度，避免与不同赛道可累加规则混淆。"
+  },
+  {
+    "qid": "fzu_022",
+    "query": "申请辅修专业需要什么绩点条件，在校期间可以辅修几个专业？",
+    "category": "minor_program",
+    "relevantDocuments": [
+      {
+        "documentKey": "9ad3aafbefd8921ecbf6fbdec945110bab6c80b3f0045e2ca6bd74c301fbc8b8",
+        "docUuid": "c1e80a8373ff4921a0bab65091f16bfc",
+        "fileName": "福州大学本科生辅修专业管理暂行办法.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "申请辅修的学生主修专业已修课程平均学分绩点原则上应不低于2.0；学生在校期间只允许辅修一个专业。",
+    "evidence": "《福州大学本科生辅修专业管理暂行办法》Parent block 1，第四条和第五条。",
+    "notes": "资格条件与数量限制组合。"
+  },
+  {
+    "qid": "fzu_023",
+    "query": "2025年起施行的普通全日制学生学士学位细则中，辅修专业学士学位证书如何发放？",
+    "category": "degree_award",
+    "relevantDocuments": [
+      {
+        "documentKey": "78b406ebf9f9405bc445d49b2d0d629eb7530ecab5ae1306b389d55dcb863e9c",
+        "docUuid": "682ca8ee39d84c7c884ad47ab69c16ad",
+        "fileName": "福州大学授予普通全日制学生学士学位工作细则.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "辅修专业学士学位在主修专业学士学位证书中予以注明，不单独发放学位证书。",
+    "evidence": "《福州大学授予普通全日制学生学士学位工作细则》Parent block 1，第七至八条；第十三条注明该细则自2025年1月1日起施行。",
+    "notes": "当前有效版本的版本敏感 case；不与旧版辅修学位规则混合。"
+  },
+  {
+    "qid": "fzu_024",
+    "query": "辅修专业和主修专业课程冲突时能否免听？免听课程有没有学分上限？",
+    "category": "minor_program",
+    "relevantDocuments": [
+      {
+        "documentKey": "9ad3aafbefd8921ecbf6fbdec945110bab6c80b3f0045e2ca6bd74c301fbc8b8",
+        "docUuid": "c1e80a8373ff4921a0bab65091f16bfc",
+        "fileName": "福州大学本科生辅修专业管理暂行办法.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "辅修课程与主修课程冲突时可以申请免听，经任课教师批准后允许免听，但必须自学并参加考试。两专业培养方案内容基本相同的课程申请免修时，每个辅修专业这类免修课程学分累计不得超过5学分。",
+    "evidence": "《福州大学本科生辅修专业管理暂行办法》Parent block 1，第七条和第九条：分别规定课程冲突免听及相同课程免修的5学分上限。",
+    "notes": "同一文档内两个相近但不同的概念：免听与免修，需人工确认答案是否完整。"
+  },
+  {
+    "qid": "fzu_025",
+    "query": "按照当前有效的辅修专业管理办法，辅修专业修不下去时什么时候可以申请终止，已修学分如何处理？",
+    "category": "version_sensitive",
+    "relevantDocuments": [
+      {
+        "documentKey": "9ad3aafbefd8921ecbf6fbdec945110bab6c80b3f0045e2ca6bd74c301fbc8b8",
+        "docUuid": "c1e80a8373ff4921a0bab65091f16bfc",
+        "fileName": "福州大学本科生辅修专业管理暂行办法.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "学生应在每学期开学初前三周内向辅修专业所在学院教学办提出终止辅修申请并办理已辅修课程成绩证明；已获得的学分可以申请认定为通识教育选修课中相应类别课程学分。",
+    "evidence": "《福州大学本科生辅修专业管理暂行办法》Parent block 1，第十一条；文末第十五条说明该办法自2022年9月1日起施行，原2018年办法同时废止。",
+    "notes": "version-sensitive；当前文本是2022年施行版本，旧版不能直接替代。"
+  },
+  {
+    "qid": "fzu_026",
+    "query": "普通本科毕业生获得学士学位需要满足哪些基本条件？",
+    "category": "degree_award",
+    "relevantDocuments": [
+      {
+        "documentKey": "6132290ebe2001dbb8cb4430259f8689b584f13be14eeaa68c5f0c7cb38d14e7",
+        "docUuid": "3138e095abe54f24ab922b01982f2dc9",
+        "fileName": "福州大学授予学士学位工作细则.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "学生应拥护中国共产党的领导、热爱社会主义祖国、遵纪守法、品行端正，掌握本学科基础理论和专门知识并具备初步研究或技术能力，在允许修业年限内完成培养方案要求并经审核准予毕业。",
+    "evidence": "《福州大学授予学士学位工作细则》Parent block 1，第四条列出的三项学士学位授予条件。",
+    "notes": "标准事实性问题。"
+  },
+  {
+    "qid": "fzu_027",
+    "query": "因作弊受到记过处分的学生，满足什么条件后才可以申请学士学位？",
+    "category": "degree_award",
+    "relevantDocuments": [
+      {
+        "documentKey": "6132290ebe2001dbb8cb4430259f8689b584f13be14eeaa68c5f0c7cb38d14e7",
+        "docUuid": "3138e095abe54f24ab922b01982f2dc9",
+        "fileName": "福州大学授予学士学位工作细则.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "因作弊、剽窃、抄袭等学术诚信问题受记过及以上处分的学生，需要在处分解除后有突出表现，并且毕业时学习总成绩平均学分绩点排名在本年级本专业前50%以内；还要履行书面申请、学院审议推荐和校学位评定委员会审议投票程序。",
+    "evidence": "《福州大学授予学士学位工作细则》Parent block 1，第六条：列出处分解除、突出表现、平均学分绩点排名前50%及申请审议程序。",
+    "notes": "排他性与程序性条件组合。"
+  },
+  {
+    "qid": "fzu_028",
+    "query": "申请休学创业的本科生需要满足哪些创业主体条件？",
+    "category": "entrepreneurship_status",
+    "relevantDocuments": [
+      {
+        "documentKey": "bd79da8cfd572860d8f561c1b211f0759a14e96bf7279c45c7a09ab2be65ea42",
+        "docUuid": "79c4725baf594fc3ad7abc50bdf4f3f3",
+        "fileName": "福州大学本科生创业学籍管理实施办法（暂行）.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "适用对象是具有福州大学学籍、积极开展创业实践并创办企业的本科生，且学生须为企业持股30%以上的法定代表人或持股51%以上的控股股东。",
+    "evidence": "《福州大学本科生创业学籍管理实施办法（暂行）》Parent block 1，第三条。",
+    "notes": "精确股权比例，适合测试数字召回。"
+  },
+  {
+    "qid": "fzu_029",
+    "query": "2018年发布的学士学位工作细则中，因学术诚信受记过及以上处分的学生申请学位还需满足哪两项条件？",
+    "category": "version_sensitive",
+    "relevantDocuments": [
+      {
+        "documentKey": "d543b8c261a5dd3bdb7fb9672536834fbd79494c2c9d4bb021fed02eda0e8fc5",
+        "docUuid": "47667f0f88e747f99a8b1f243c515f15",
+        "fileName": "福州大学授予学士学位工作细则(暂行）.md",
+        "relevance": 2
+      }
+    ],
+    "groundTruthAnswer": "须同时满足两项条件：受该类处分后有突出表现且处分已解除；毕业时学习总成绩的平均学分绩点排名在本年级本专业前50%以内。",
+    "evidence": "《福州大学授予学士学位工作细则(暂行）》Parent block 1，第六条：明确列出处分解除并有突出表现、平均学分绩点排名前50%以内两项条件。",
+    "notes": "2018历史版本TEACHING_FILE；仅用于版本敏感检索，不代表当前有效规则。"
+  },
+  {
+    "qid": "fzu_030",
+    "query": "2026届预计毕业生补拍电子注册学历照片的时间、地点、费用、拍摄准备和采集码要求是什么？",
+    "category": "multi_document_notice",
+    "relevantDocuments": [
+      {
+        "documentKey": "7da38fddd53ccda6f7e8d67ab6a6e7b5831fdd74edd61d69a0ad22a36572f493",
+        "docUuid": "200ef65002cd4cacb0b2d24357ee3718",
+        "fileName": "关于2026届预计毕业生补拍电子注册学历照片的通知.md",
+        "relevance": 2
+      },
+      {
+        "documentKey": "4af73dc94b623037d8a7958281ce8090fa3586b2f34ea4c7998b6ce7f88de4fa",
+        "docUuid": "e7a66a98e9dc48bf82916d4b14f922b5",
+        "fileName": "附件2：证件照拍摄要求.pdf",
+        "relevance": 2
+      },
+      {
+        "documentKey": "26c3d454b06dfb592fe1784b14e026ba4b323475ff3f285437421a5b852f4303",
+        "docUuid": "bc1617dbfb534decaaf9464c50e2f8d3",
+        "fileName": "附件3：获得图像采集码途径.pdf",
+        "relevance": 2
+      },
+      {
+        "documentKey": "45942b988c695b038dba573e11d486469280584262d5b6d9399c39419fede4b4",
+        "docUuid": "76a7d981fe1e44478b97d52f3a22d1cf",
+        "fileName": "附件3：获得图像采集码途径.pdf",
+        "relevance": 1
+      }
+    ],
+    "groundTruthAnswer": "2026届补拍时间为5月14日15:00—16:00，地点为旗山校区行政北楼西135教务处教学运行科，费用为每生20元。学生应按附件2准备衣着、发型、眼镜、佩饰和妆容，并提前获得本人图像采集码；采集码可通过学信网学信档案、学信网微信公众号或学信网APP获取。",
+    "evidence": "2026届补拍通知 Parent block 1 给出时间、地点、费用和必须提前取得采集码；附件2 Parent block 1 给出拍摄要求；附件3 Parent blocks 1-4 给出学信网、微信公众号和APP获取采集码步骤。2025届附件3与2026届附件3正文归一化后完全相同。",
+    "notes": "multi-document；包含一份跨年份正文完全等价的附件，需人工确认是否将旧年份附件作为辅助 relevant document。"
+  }
+]

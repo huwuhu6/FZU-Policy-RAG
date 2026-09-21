@@ -65,6 +65,23 @@ public class ChatService {
         return retrievalPipeline.retrieve(query, fetchK, topK, useSparseSearch, useRerank);
     }
 
+    /**
+     * Evaluation-only retrieval entry point with explicit rerank request size
+     * and outcome observability. The existing overload remains unchanged for
+     * the legacy ecom runner and other callers.
+     */
+    public Mono<RetrievalPipeline.RetrievalOutcome> retrieveForEvaluationWithOutcome(
+            String query,
+            boolean useSparseSearch,
+            boolean useRerank,
+            int topK,
+            int evaluationRerankTopK) {
+        int fetchK = useRerank ? hybridTopK : topK;
+        int rerankRequestTopK = useRerank ? evaluationRerankTopK : topK;
+        return retrievalPipeline.retrieveForEvaluation(
+                query, fetchK, rerankRequestTopK, useSparseSearch, useRerank);
+    }
+
     // TODO:: 精确计算token消耗量
     public Mono<ChatStreamResponse> streamWithSources(String userInput, String conversationId,
             CurrentUserContext currentUserContext, SearchScope searchScope,

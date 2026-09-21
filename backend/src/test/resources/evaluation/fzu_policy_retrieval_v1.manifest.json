@@ -1,0 +1,30 @@
+{
+  "datasetName": "fzu-policy-retrieval-v1",
+  "datasetVersion": "fzu_policy_retrieval_v1",
+  "caseCount": 30,
+  "qrelsKey": "knowledge_document.file_hash",
+  "snapshotDocKey": "knowledge_document.doc_uuid",
+  "corpus": "fzu_policy_rag_baseline_v1",
+  "corpusEligibility": "knowledge_document.status=COMPLETED and ETL SUCCESS",
+  "temporalSemantics": "Each case notes whether it targets the current snapshot or an explicitly named historical version.",
+  "sourceSections": [
+    "STUDENT_HANDBOOK",
+    "TEACHING_NOTICE",
+    "TEACHING_FILE"
+  ],
+  "variants": [
+    "dense_no_rerank",
+    "hybrid_no_rerank",
+    "dense_rerank",
+    "hybrid_rerank"
+  ],
+  "retrieval": {
+    "denseTopK": 50,
+    "hybridTopK": 80,
+    "rerankTopK": 40,
+    "finalChildTopK": 10,
+    "rerankScoreThreshold": 0.3,
+    "evaluationTopK": 10
+  },
+  "formalRun": "not executed in this change"
+}

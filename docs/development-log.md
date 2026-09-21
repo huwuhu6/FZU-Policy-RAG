@@ -298,3 +298,17 @@ RAG 请求入口日志补充用户输入，QueryPreProcessor 日志补充原始 
 ### 验证
 
 `ConversationIntentRouterTest`、`ChatServicePromptTest`、`QueryPreProcessorTest` 定向测试通过；`mvn clean compile` 和 `npm run build` 均通过（前端构建仅有既有 Rollup 注释及 chunk size 警告）。未修改 RAG 检索、Rerank 或 SSE 契约。
+
+## 2026-09-21｜落地 FZU Retrieval Evaluation v1（未执行正式 Benchmark）
+
+### 设计与边界
+
+冻结并修订 30 条真实福州大学政策 Retrieval case 为 `fzu_policy_retrieval_v1.json`，qrels 主键使用 `knowledge_document.file_hash`，当前 `doc_uuid` 仅用于快照核验。数据集保留当前有效版本与明确标注的历史版本语义，补充真实 `TEACHING_FILE` 覆盖；不生成 refusal case，不写入任何模型生成的政策事实。
+
+新增独立 `benchmark-fzu` profile 和禁用状态的 `FzuAblationStudyRunner`。Runner 复用 `BenchmarkVariant` 四组固定消融和 `ChatService` 的评测检索入口，启动时一次性读取 `COMPLETED + ETL SUCCESS` 文档的 `doc_uuid → file_hash` 映射；检索返回缺少 `metadata.doc_uuid` 或无法映射时显式失败，不回退到 Document.id、文件名或文本匹配。结果 JSONL 与 run manifest 会记录数据集、Git SHA、profile、topK、rerankTopK、超时和重试参数。
+
+在不改变生产检索排序策略的前提下，补充评测专用的 rerank outcome，区分 rerank requested/applied/fallback；抽取独立 Recall@5/10、MRR@10、nDCG@10、HitRate@5/10、平均/P50/P95 latency 和 success/failure 指标实现。`final-child-topk` 在 FZU profile 中设为 10，rerank 请求 topK 为 40，评测 topK 为 10。
+
+### 验证与当前限制
+
+只读交叉核验确认 30 条 case 涉及 16 份当前 `COMPLETED + ETL SUCCESS` 文档，qrels 中的 `doc_uuid` 与 `file_hash` 均与 MySQL 当前快照一致；数据集契约、profile、指标计算定向测试通过。`mvn clean` 和 `mvn -DskipTests compile` 通过；未执行真实 30×4 检索，也未生成正式评测结果。`dump.rdb` 保持未跟踪且未修改。
