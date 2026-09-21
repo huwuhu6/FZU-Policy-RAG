@@ -3,6 +3,7 @@ package net.topikachu.rag.evaluation;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -171,7 +172,10 @@ public final class FzuRetrievalMetrics {
     }
 
     private static List<String> rankedKeys(CaseInput input) {
-        return input.retrievedDocumentKeys() == null ? List.of() : input.retrievedDocumentKeys();
+        if (input.retrievedDocumentKeys() == null) {
+            return List.of();
+        }
+        return new ArrayList<>(new LinkedHashSet<>(input.retrievedDocumentKeys()));
     }
 
     private static Set<String> relevantKeys(Map<String, Integer> qrels) {

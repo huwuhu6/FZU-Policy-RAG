@@ -7,7 +7,7 @@ import net.topikachu.rag.evaluation.BenchmarkVariant;
 import net.topikachu.rag.evaluation.FzuRetrievalMetrics;
 import net.topikachu.rag.service.chat.ChatService;
 import net.topikachu.rag.service.chat.RetrievalPipeline;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +25,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -34,15 +35,13 @@ import java.util.stream.Collectors;
 /**
  * FZU Retrieval Evaluation v1 runner.
  *
- * The test is deliberately disabled: enabling it is the explicit action that
- * starts the 30-case x 4-variant benchmark against the real Milvus/DashScope
- * services. Dataset/qrels validation and metric tests remain runnable without
- * external services.
+ * The test is enabled only with {@code -Dfzu.benchmark.run=true}; ordinary
+ * {@code mvn test} therefore cannot start the real Milvus/DashScope benchmark.
  */
 @SpringBootTest
 @ActiveProfiles("benchmark-fzu")
 @Slf4j
-@Disabled("正式 Benchmark 需人工审核数据集后显式启用")
+@EnabledIfSystemProperty(named = "fzu.benchmark.run", matches = "true")
 class FzuAblationStudyRunner {
 
     @Autowired
@@ -117,7 +116,9 @@ class FzuAblationStudyRunner {
             summary.put("metrics", metrics);
             summary.put("rerankRequested", runs.stream().filter(run -> run.result().rerankRequested()).count());
             summary.put("rerankApplied", runs.stream().filter(run -> run.result().rerankApplied()).count());
-            summary.put("rerankFallbackCount", runs.stream().filter(run -> run.result().rerankFallback()).count());
+            summary.put("rerankFallbackCount", runs.stream()
+                    .mapToInt(run -> run.result().rerankFallbackAttempts())
+                    .sum());
             Files.writeString(outputDir.resolve(variant.id() + "-summary.json"),
                     objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(summary),
                     StandardCharsets.UTF_8);
@@ -130,11 +131,12 @@ class FzuAblationStudyRunner {
                                    String gitSha) {
         Throwable lastError = null;
         long elapsedMs = 0L;
-        RetrievalPipeline.RetrievalOutcome outcome = null;
+        int rerankFallbackAttempts = 0;
+        String lastRerankFallbackReason = null;
         for (int attempt = 0; attempt <= Math.max(0, retries); attempt++) {
             long started = System.nanoTime();
             try {
-                outcome = chatService.retrieveForEvaluationWithOutcome(
+                RetrievalPipeline.RetrievalOutcome outcome = chatService.retrieveForEvaluationWithOutcome(
                                 benchmarkCase.query(),
                                 variant.useSparseSearch(),
                                 variant.useRerank(),
@@ -144,6 +146,11 @@ class FzuAblationStudyRunner {
                 elapsedMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
                 if (outcome == null) {
                     throw new IllegalStateException("retrieval returned null");
+                }
+                if (shouldRetryRerankFallback(variant, outcome)) {
+                    rerankFallbackAttempts++;
+                    lastRerankFallbackReason = outcome.rerankFallbackReason();
+                    throw new RerankFallbackException(outcome.rerankFallbackReason());
                 }
                 List<String> retrievedKeys = mapRetrievedDocumentKeys(outcome.documents(), fileHashByDocUuid);
                 FzuCaseResult result = new FzuCaseResult(
@@ -161,7 +168,10 @@ class FzuAblationStudyRunner {
                         outcome.rerankRequested(),
                         outcome.rerankApplied(),
                         outcome.rerankFallback(),
-                        outcome.rerankFallbackReason());
+                        outcome.rerankFallbackReason() == null
+                                ? lastRerankFallbackReason
+                                : outcome.rerankFallbackReason(),
+                        rerankFallbackAttempts);
                 return new FzuCaseRun(result, new FzuRetrievalMetrics.CaseInput(
                         retrievedKeys, qrels(benchmarkCase), elapsedMs, true));
             } catch (Throwable error) {
@@ -188,8 +198,9 @@ class FzuAblationStudyRunner {
                 message,
                 variant.useRerank(),
                 false,
-                false,
-                null);
+                rerankFallbackAttempts > 0,
+                lastRerankFallbackReason,
+                rerankFallbackAttempts);
         return new FzuCaseRun(result, new FzuRetrievalMetrics.CaseInput(
                 List.of(), qrels(benchmarkCase), elapsedMs, false));
     }
@@ -221,7 +232,7 @@ class FzuAblationStudyRunner {
 
     private List<String> mapRetrievedDocumentKeys(List<Document> documents,
                                                   Map<String, String> fileHashByDocUuid) {
-        List<String> keys = new ArrayList<>();
+        LinkedHashSet<String> uniqueKeys = new LinkedHashSet<>();
         for (Document document : documents == null ? List.<Document>of() : documents) {
             Object rawDocUuid = document.getMetadata().get("doc_uuid");
             if (!(rawDocUuid instanceof String docUuid) || docUuid.isBlank()) {
@@ -231,9 +242,14 @@ class FzuAblationStudyRunner {
             if (fileHash == null || fileHash.isBlank()) {
                 throw new IllegalStateException("metadata.doc_uuid is not mapped to knowledge_document.file_hash: " + docUuid);
             }
-            keys.add(fileHash);
+            uniqueKeys.add(fileHash);
         }
-        return keys;
+        return new ArrayList<>(uniqueKeys);
+    }
+
+    static boolean shouldRetryRerankFallback(BenchmarkVariant variant,
+                                             RetrievalPipeline.RetrievalOutcome outcome) {
+        return variant.useRerank() && outcome != null && outcome.rerankFallback();
     }
 
     private void validateDataset(List<FzuBenchmarkCase> cases) throws IOException {
@@ -342,9 +358,16 @@ class FzuAblationStudyRunner {
                          boolean rerankRequested,
                          boolean rerankApplied,
                          boolean rerankFallback,
-                         String rerankFallbackReason) {
+                         String rerankFallbackReason,
+                         int rerankFallbackAttempts) {
     }
 
     private record FzuCaseRun(FzuCaseResult result, FzuRetrievalMetrics.CaseInput metricsInput) {
+    }
+
+    private static final class RerankFallbackException extends RuntimeException {
+        private RerankFallbackException(String reason) {
+            super(reason == null || reason.isBlank() ? "rerank fallback" : reason);
+        }
     }
 }

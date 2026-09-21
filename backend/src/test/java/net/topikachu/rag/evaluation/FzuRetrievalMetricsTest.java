@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FzuRetrievalMetricsTest {
 
@@ -31,5 +32,18 @@ class FzuRetrievalMetricsTest {
         assertEquals(20.0, summary.averageLatencyMs(), 0.0001);
         assertEquals(10L, summary.p50LatencyMs());
         assertEquals(30L, summary.p95LatencyMs());
+    }
+
+    @Test
+    void deduplicatesDocumentKeysBeforeDocumentLevelScoring() {
+        FzuRetrievalMetrics.Summary summary = FzuRetrievalMetrics.summarize(List.of(
+                new FzuRetrievalMetrics.CaseInput(
+                        List.of("A", "A", "A", "B"), Map.of("A", 2, "B", 1), 10, true)));
+
+        assertEquals(1.0, summary.recallAt5(), 0.0001);
+        assertEquals(1.0, summary.ndcgAt10(), 0.0001);
+        assertTrue(summary.recallAt5() <= 1.0);
+        assertTrue(summary.recallAt10() <= 1.0);
+        assertTrue(summary.ndcgAt10() <= 1.0);
     }
 }
